@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MS Agent — Personal Executive & Voice Assistant</title>
+    <meta name="description" content="MS Agent: Systematic AI personal assistant for automated email drafting, direct WhatsApp message responses, real-time Google Search grounding, task orchestration, and two-way voice conversation in English, Bengali, and Hindi." />
+    <meta property="og:title" content="MS Agent — Personal Executive & Voice Assistant" />
+    <meta property="og:description" content="MS Agent: Systematic AI personal assistant for automated email drafting, direct WhatsApp message responses, real-time Google Search grounding, task orchestration, and two-way voice conversation in English, Bengali, and Hindi." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      (function () {
+        try {
+          var currentFetch = window.fetch ? window.fetch.bind(window) : undefined;
+          var patchDescriptor = function (target) {
+            if (!target) return;
+            try {
+              var desc = Object.getOwnPropertyDescriptor(target, "fetch");
+              if (desc && (!desc.writable || !desc.set)) {
+                Object.defineProperty(target, "fetch", {
+                  configurable: true,
+                  enumerable: true,
+                  get: function () {
+                    return currentFetch;
+                  },
+                  set: function (fn) {
+                    if (typeof fn === "function") {
+                      currentFetch = fn;
+                    }
+                  },
+                });
+              }
+            } catch (err) {}
+          };
+          patchDescriptor(window);
+          patchDescriptor(Object.getPrototypeOf(window));
+          if (typeof Window !== "undefined" && Window.prototype) {
+            patchDescriptor(Window.prototype);
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body class="bg-slate-50 text-slate-900 antialiased selection:bg-emerald-600 selection:text-white">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

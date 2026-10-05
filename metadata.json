@@ -1,0 +1,6 @@
+{
+  "name": "Kanthaswar AI — Personal Executive & Voice Assistant",
+  "description": "Systematic AI personal assistant for automated email drafting, WhatsApp message responses, real-time Google Search grounding, task orchestration, and two-way voice conversation in Bengali and English.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
