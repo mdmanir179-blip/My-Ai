@@ -40,19 +40,19 @@ import {
 export default function App() {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("command");
   const [emails, setEmails] = useState<EmailItem[]>(() => {
-    const saved = localStorage.getItem("kanthaswar_emails_v2");
+    const saved = localStorage.getItem("ms_agent_emails_v3");
     return saved ? JSON.parse(saved) : INITIAL_EMAILS;
   });
   const [whatsapps, setWhatsapps] = useState<WhatsAppItem[]>(() => {
-    const saved = localStorage.getItem("kanthaswar_whatsapps_v2");
+    const saved = localStorage.getItem("ms_agent_whatsapps_v3");
     return saved ? JSON.parse(saved) : INITIAL_WHATSAPP;
   });
   const [tasks, setTasks] = useState<SystematicTask[]>(() => {
-    const saved = localStorage.getItem("kanthaswar_tasks_v2");
+    const saved = localStorage.getItem("ms_agent_tasks_v3");
     return saved ? JSON.parse(saved) : INITIAL_TASKS;
   });
   const [searches, setSearches] = useState<SearchRecord[]>(() => {
-    const saved = localStorage.getItem("kanthaswar_searches_v2");
+    const saved = localStorage.getItem("ms_agent_searches_v3");
     return saved ? JSON.parse(saved) : INITIAL_SEARCHES;
   });
   const [messages, setMessages] = useState<ConversationMessage[]>(INITIAL_MESSAGES);
@@ -69,13 +69,13 @@ export default function App() {
     liveMessages: [],
   });
   const [isConnectingWa, setIsConnectingWa] = useState(false);
-  const [pairingPhoneInput, setPairingPhoneInput] = useState("+8801711002244");
+  const [pairingPhoneInput, setPairingPhoneInput] = useState("");
   const [isRequestingPairCode, setIsRequestingPairCode] = useState(false);
 
   // Automation & Voice states
   const [fullAutoPilot, setFullAutoPilot] = useState(true);
   const [autoHandsFreeVoice, setAutoHandsFreeVoice] = useState(true);
-  const [directWaPhone, setDirectWaPhone] = useState("+8801711002244");
+  const [directWaPhone, setDirectWaPhone] = useState("");
   const [inputText, setInputText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -89,7 +89,7 @@ export default function App() {
 
   // Direct WhatsApp Composer & Auto-Reply Simulator states
   const [quickWaContact, setQuickWaContact] = useState("");
-  const [quickWaPhone, setQuickWaPhone] = useState("+8801711002244");
+  const [quickWaPhone, setQuickWaPhone] = useState("");
   const [quickWaIncoming, setQuickWaIncoming] = useState("");
   const [isAutoReplyingWa, setIsAutoReplyingWa] = useState(false);
 
@@ -118,19 +118,19 @@ export default function App() {
   const seenLiveMsgIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    localStorage.setItem("kanthaswar_emails_v2", JSON.stringify(emails));
+    localStorage.setItem("ms_agent_emails_v3", JSON.stringify(emails));
   }, [emails]);
 
   useEffect(() => {
-    localStorage.setItem("kanthaswar_whatsapps_v2", JSON.stringify(whatsapps));
+    localStorage.setItem("ms_agent_whatsapps_v3", JSON.stringify(whatsapps));
   }, [whatsapps]);
 
   useEffect(() => {
-    localStorage.setItem("kanthaswar_tasks_v2", JSON.stringify(tasks));
+    localStorage.setItem("ms_agent_tasks_v3", JSON.stringify(tasks));
   }, [tasks]);
 
   useEffect(() => {
-    localStorage.setItem("kanthaswar_searches_v2", JSON.stringify(searches));
+    localStorage.setItem("ms_agent_searches_v3", JSON.stringify(searches));
   }, [searches]);
 
   useEffect(() => {
@@ -1880,7 +1880,7 @@ export default function App() {
                 </div>
 
                 {/* Right 5 Cols: QR Code Display Box */}
-                <div className="lg:col-span-5 flex flex-col items-center justify-center p-4 bg-white rounded-xl border border-slate-200 min-h-[240px]">
+                <div className="lg:col-span-5 flex flex-col items-center justify-center p-5 bg-white rounded-xl border border-slate-200 min-h-[260px]">
                   {waStatus.state === "connected" && waStatus.connectedUser ? (
                     <div className="text-center space-y-2 p-4">
                       <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto">
@@ -1894,23 +1894,43 @@ export default function App() {
                       </p>
                     </div>
                   ) : waStatus.qrDataUrl ? (
-                    <div className="text-center space-y-2">
-                      <img
-                        src={waStatus.qrDataUrl}
-                        alt="WhatsApp Link QR Code"
-                        referrerPolicy="no-referrer"
-                        className="w-52 h-52 mx-auto rounded-lg border border-slate-200"
-                      />
-                      <p className="text-xs font-medium text-slate-700">
-                        Scan with WhatsApp → Linked Devices
+                    <div className="text-center space-y-2.5">
+                      <div className="p-3 bg-white rounded-xl border-2 border-slate-900 inline-block shadow-sm">
+                        <img
+                          src={waStatus.qrDataUrl}
+                          alt="WhatsApp Link QR Code"
+                          referrerPolicy="no-referrer"
+                          className="w-56 h-56 mx-auto block"
+                        />
+                      </div>
+                      <p className="text-xs font-semibold text-slate-900">
+                        Scan with WhatsApp → Settings → Linked Devices
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        After scanning, wait 2–3 seconds while WhatsApp completes synchronization.
+                      </p>
+                    </div>
+                  ) : waStatus.state === "connecting" || isConnectingWa ? (
+                    <div className="text-center space-y-3 p-4">
+                      <RefreshCw className="w-8 h-8 mx-auto text-emerald-600 animate-spin" />
+                      <div className="text-xs font-semibold text-slate-800">
+                        Connecting to WhatsApp Server...
+                      </div>
+                      <p className="text-[11px] text-slate-500 max-w-xs">
+                        Generating fresh QR code or completing device handshake. Please wait a moment.
                       </p>
                     </div>
                   ) : (
-                    <div className="text-center space-y-2 p-4 text-xs text-slate-400">
-                      <QrCode className="w-10 h-10 mx-auto text-slate-300" />
+                    <div className="text-center space-y-3 p-4 text-xs text-slate-500">
+                      <QrCode className="w-10 h-10 mx-auto text-slate-400" />
                       <p>
-                        Click "Generate WhatsApp QR Code" on the left to display your live multi-device QR code here.
+                        Click <strong>"Generate WhatsApp QR Code"</strong> on the left to display your live QR code here.
                       </p>
+                      {waStatus.lastError && (
+                        <p className="text-[11px] text-amber-700 bg-amber-50 p-2 rounded border border-amber-200">
+                          {waStatus.lastError}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>

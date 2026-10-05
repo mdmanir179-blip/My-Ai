@@ -144,25 +144,38 @@ const processedMsgIds = new Set<string>();
 const sentByAiMsgIds = new Set<string>();
 
 async function startRealWhatsAppConnection(forceReset = false) {
-  if (isStartingWa) return;
+  if (isStartingWa && !forceReset) return;
   isStartingWa = true;
 
   try {
     const baileysMod = await import("@whiskeysockets/baileys");
     const makeWASocket = baileysMod.default || (baileysMod as any).makeWASocket;
-    const { DisconnectReason, fetchLatestBaileysVersion, useMultiFileAuthState } = baileysMod;
+    const {
+      DisconnectReason,
+      Browsers,
+      fetchLatestWaWebVersion,
+      fetchLatestBaileysVersion,
+      useMultiFileAuthState,
+      makeCacheableSignalKeyStore,
+    } = baileysMod as any;
     const QRCodeMod = await import("qrcode");
     const QRCode = QRCodeMod.default || QRCodeMod;
     const pinoMod = await import("pino");
     const pino = pinoMod.default || (pinoMod as any);
+    const silentLogger = pino({ level: "silent" });
+
+    // Always close any previous dangling socket before opening a new one
+    if (waSocket) {
+      try {
+        waSocket.ev?.removeAllListeners?.("connection.update");
+        waSocket.ev?.removeAllListeners?.("creds.update");
+        waSocket.ev?.removeAllListeners?.("messages.upsert");
+        waSocket.end(undefined);
+      } catch {}
+      waSocket = null;
+    }
 
     if (forceReset) {
-      if (waSocket) {
-        try {
-          waSocket.end(undefined);
-        } catch {}
-        waSocket = null;
-      }
       if (fs.existsSync(WA_AUTH_DIR)) {
         fs.rmSync(WA_AUTH_DIR, { recursive: true, force: true });
       }
@@ -175,23 +188,38 @@ async function startRealWhatsAppConnection(forceReset = false) {
     waRuntime.lastError = null;
 
     const { state, saveCreds } = await useMultiFileAuthState(WA_AUTH_DIR);
-    let version: [number, number, number] = [2, 3000, 1015901307];
+
+    // Use the latest WhatsApp Web protocol version so phone QR scanner never rejects with "Couldn't link device"
+    let version: [number, number, number] = [2, 3000, 1049294120];
     try {
-      const latest = await Promise.race([
-        fetchLatestBaileysVersion(),
-        new Promise<null>((r) => setTimeout(() => r(null), 1500)),
+      const latestWeb = await Promise.race([
+        fetchLatestWaWebVersion ? fetchLatestWaWebVersion({}) : fetchLatestBaileysVersion(),
+        new Promise<null>((r) => setTimeout(() => r(null), 2500)),
       ]);
-      if (latest && (latest as any).version) version = (latest as any).version;
+      if (latestWeb && (latestWeb as any).version) {
+        version = (latestWeb as any).version;
+      }
     } catch {}
 
     const sock = makeWASocket({
       version,
-      auth: state,
+      auth: {
+        creds: state.creds,
+        keys: makeCacheableSignalKeyStore
+          ? makeCacheableSignalKeyStore(state.keys, silentLogger)
+          : state.keys,
+      },
       printQRInTerminal: false,
-      logger: pino({ level: "silent" }) as any,
-      browser: ["MS Agent Assistant", "Chrome", "1.0.0"],
+      logger: silentLogger as any,
+      // Official Ubuntu Chrome fingerprint required by WhatsApp Multi-Device QR & Pairing Code handshake
+      browser: Browsers?.ubuntu ? Browsers.ubuntu("Chrome") : ["Ubuntu", "Chrome", "22.04.4"],
       syncFullHistory: false,
       markOnlineOnConnect: true,
+      generateHighQualityLinkPreview: false,
+      connectTimeoutMs: 60000,
+      defaultQueryTimeoutMs: 60000,
+      keepAliveIntervalMs: 25000,
+      getMessage: async () => ({ conversation: "MS Agent" }),
     });
 
     waSocket = sock;
@@ -203,10 +231,16 @@ async function startRealWhatsAppConnection(forceReset = false) {
       if (qr) {
         try {
           waRuntime.qrDataUrl = await QRCode.toDataURL(qr, {
-            margin: 2,
-            width: 280,
+            errorCorrectionLevel: "M",
+            margin: 3,
+            width: 320,
+            color: {
+              dark: "#000000",
+              light: "#FFFFFF",
+            },
           });
           waRuntime.state = "qr_ready";
+          waRuntime.lastError = null;
         } catch (qrErr: any) {
           console.error("QR generation error:", qrErr);
         }
@@ -228,10 +262,21 @@ async function startRealWhatsAppConnection(forceReset = false) {
       }
 
       if (connection === "close") {
-        const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
-        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+        const statusCode =
+          (lastDisconnect?.error as any)?.output?.statusCode ||
+          (lastDisconnect?.error as any)?.data?.statusCode;
+        const reasonMsg =
+          (lastDisconnect?.error as any)?.output?.payload?.message ||
+          (lastDisconnect?.error as any)?.message ||
+          "";
 
-        if (statusCode === DisconnectReason.loggedOut) {
+        const isLoggedOut =
+          statusCode === DisconnectReason.loggedOut || statusCode === 401;
+        const isRestartRequired =
+          statusCode === DisconnectReason.restartRequired || statusCode === 515;
+
+        if (isLoggedOut) {
+          // Session invalidated or rejected — clear old auth files so next QR / Pairing Code starts fresh
           waRuntime.state = "disconnected";
           waRuntime.connectedUser = null;
           waRuntime.qrDataUrl = null;
@@ -239,13 +284,25 @@ async function startRealWhatsAppConnection(forceReset = false) {
           if (fs.existsSync(WA_AUTH_DIR)) {
             fs.rmSync(WA_AUTH_DIR, { recursive: true, force: true });
           }
-        } else if (shouldReconnect && !process.env.VERCEL) {
+        } else if (isRestartRequired) {
+          // Immediately after QR scan on phone, WhatsApp sends 515 restartRequired to complete linking!
           waRuntime.state = "connecting";
+          waRuntime.qrDataUrl = null;
           setTimeout(() => {
             startRealWhatsAppConnection(false).catch(() => {});
-          }, 2500);
+          }, 400);
+        } else if (!process.env.VERCEL) {
+          waRuntime.state = "connecting";
+          if (reasonMsg) {
+            waRuntime.lastError = `Reconnecting (${reasonMsg})...`;
+          }
+          setTimeout(() => {
+            startRealWhatsAppConnection(false).catch(() => {});
+          }, 2000);
         } else {
           waRuntime.state = "disconnected";
+          waRuntime.lastError =
+            "Note: Live QR WebSocket requires a persistent server (like AI Studio / Cloud Run). On Vercel Serverless, use Meta Cloud Webhook or run QR linking here.";
         }
       }
     });
@@ -760,8 +817,11 @@ apiApp.get("/api/whatsapp/status", (req, res) => {
 apiApp.post("/api/whatsapp/connect", async (req, res) => {
   try {
     const { resetSession = false } = req.body || {};
-    await startRealWhatsAppConnection(Boolean(resetSession));
-    for (let i = 0; i < 12; i++) {
+    // If not currently connected, always reset partial/expired auth state so a fresh valid QR code is generated
+    const shouldForceFresh =
+      Boolean(resetSession) || waRuntime.state !== "connected";
+    await startRealWhatsAppConnection(shouldForceFresh);
+    for (let i = 0; i < 20; i++) {
       if (waRuntime.qrDataUrl || waRuntime.state === "connected") break;
       await sleep(300);
     }
@@ -785,10 +845,15 @@ apiApp.post("/api/whatsapp/pair-code", async (req, res) => {
       });
     }
 
-    if (!waSocket || waRuntime.state === "disconnected" || waRuntime.state === "error") {
-      await startRealWhatsAppConnection(true);
-      await sleep(1500);
+    // Pairing code requires a fresh unlinked socket with Browsers.ubuntu("Chrome")
+    await startRealWhatsAppConnection(true);
+    for (let i = 0; i < 15; i++) {
+      if (waSocket && (waRuntime.qrDataUrl || waRuntime.state === "qr_ready")) {
+        break;
+      }
+      await sleep(300);
     }
+    await sleep(500);
 
     const code = await waSocket.requestPairingCode(cleanPhone);
     const formattedCode =
@@ -800,7 +865,7 @@ apiApp.post("/api/whatsapp/pair-code", async (req, res) => {
     res.status(500).json({
       error:
         err?.message ||
-        "Could not generate pairing code right now. Try scanning the QR code instead.",
+        "Could not generate pairing code right now. Make sure the phone number includes your country code (e.g., +880 or +91).",
     });
   }
 });
