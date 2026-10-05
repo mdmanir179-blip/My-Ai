@@ -137,6 +137,20 @@ export default function App() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isProcessing]);
 
+  // Safe JSON parser so serverless/proxy plain-text errors never crash the UI with "Unexpected token 'A', 'A server e'... is not valid JSON"
+  const safeParseJson = async (res: Response): Promise<any> => {
+    const raw = await res.text();
+    try {
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {
+        nonJsonError: true,
+        error:
+          "Serverless backend is initializing or GEMINI_API_KEY is not set in your Vercel Environment Variables.",
+      };
+    }
+  };
+
   // Poll Real WhatsApp Link status & sync live incoming/auto-replied device messages
   useEffect(() => {
     let active = true;
@@ -144,18 +158,18 @@ export default function App() {
       try {
         const res = await fetch("/api/whatsapp/status");
         if (!res.ok || !active) return;
-        const data: WhatsAppConnectionStatus = await res.json();
-        setWaStatus(data);
+        const data = await safeParseJson(res);
+        if (data.nonJsonError) return;
+        setWaStatus(data as WhatsAppConnectionStatus);
 
         if (data.liveMessages && data.liveMessages.length > 0) {
           setWhatsapps((prev) => {
             const existingIds = new Set(prev.map((item) => item.id));
-            const newItems = data.liveMessages.filter((m) => !existingIds.has(m.id));
+            const newItems = data.liveMessages.filter((m: any) => !existingIds.has(m.id));
             if (newItems.length === 0) return prev;
             return [...newItems, ...prev];
           });
 
-          // Announce newly arrived live auto-replied messages if voice is enabled
           for (const liveMsg of data.liveMessages) {
             if (!seenLiveMsgIdsRef.current.has(liveMsg.id)) {
               seenLiveMsgIdsRef.current.add(liveMsg.id);
@@ -184,8 +198,10 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ resetSession }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Could not start WhatsApp link");
+      const data = await safeParseJson(res);
+      if (!res.ok || data.nonJsonError) {
+        throw new Error(data.error || "Could not start WhatsApp link");
+      }
       setWaStatus(data);
     } catch (err: any) {
       setErrorBanner(err?.message || "Failed to initialize WhatsApp QR link.");
@@ -205,8 +221,10 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phoneNumber: pairingPhoneInput }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Could not generate pairing code");
+      const data = await safeParseJson(res);
+      if (!res.ok || data.nonJsonError) {
+        throw new Error(data.error || "Could not generate pairing code");
+      }
       if (data.status) setWaStatus(data.status);
     } catch (err: any) {
       setErrorBanner(err?.message || "Failed to request WhatsApp pairing code.");
@@ -219,8 +237,8 @@ export default function App() {
     try {
       const res = await fetch("/api/whatsapp/disconnect", { method: "POST" });
       if (res.ok) {
-        const data = await res.json();
-        setWaStatus(data);
+        const data = await safeParseJson(res);
+        if (!data.nonJsonError) setWaStatus(data);
       }
     } catch (err: any) {
       setErrorBanner(err?.message || "Failed to disconnect WhatsApp.");
@@ -241,8 +259,8 @@ export default function App() {
         }),
       });
       if (res.ok) {
-        const data = await res.json();
-        setWaStatus(data);
+        const data = await safeParseJson(res);
+        if (!data.nonJsonError) setWaStatus(data);
       }
     } catch {}
   };
@@ -282,7 +300,7 @@ export default function App() {
         });
 
         if (ttsRes.ok) {
-          const ttsData = await ttsRes.json();
+          const ttsData = await safeParseJson(ttsRes);
           base64Audio = ttsData.audioBase64;
           if (base64Audio) {
             setMessages((prev) =>
@@ -441,8 +459,8 @@ export default function App() {
         }),
       });
 
-      const data = await response.json();
-      if (!response.ok) {
+      const data = await safeParseJson(response);
+      if (!response.ok || data.nonJsonError) {
         throw new Error(data.error || "Failed to execute AI command");
       }
 
@@ -582,7 +600,7 @@ export default function App() {
               }),
             });
 
-            const transData = await transRes.json();
+            const transData = await safeParseJson(transRes);
             const spokenText =
               transData.text?.trim() || browserTranscriptRef.current.trim();
 
@@ -711,9 +729,17 @@ export default function App() {
           incomingMessage: incomingText,
         }),
       });
-      const data = await res.json();
+      const data = await safeParseJson(res);
+      const isBengali = /[\u0980-\u09FF]/.test(incomingText);
+      const isHindi = /[\u0900-\u097F]/.test(incomingText);
+      const localFallbackReply = isBengali
+        ? `ধন্যবাদ ${contact}, আপনার মেসেজটি পেয়েছি। খুব শীঘ্রই জানাচ্ছি।`
+        : isHindi
+        ? `धन्यवाद ${contact}, आपका संदेश मिल गया है। मैं जल्द ही आपको अपडेट देता हूँ।`
+        : `Hi ${contact}, thank you for your message. I have received it and will respond shortly.`;
+
       const generatedReply =
-        data.aiReply || "Thank you for your message. I have received it and will respond shortly.";
+        data.aiReply && !data.nonJsonError ? data.aiReply : localFallbackReply;
 
       const newWaItem: WhatsAppItem = {
         id: `wa-${Date.now()}`,
