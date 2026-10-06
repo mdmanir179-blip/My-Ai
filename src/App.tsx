@@ -710,12 +710,36 @@ export default function App() {
     }
   };
 
+  const [metaAccessTokenInput, setMetaAccessTokenInput] = useState("");
+  const [metaPhoneIdInput, setMetaPhoneIdInput] = useState("");
+  const [metaSavedBanner, setMetaSavedBanner] = useState(false);
+
+  const handleSaveMetaCloudConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch("/api/whatsapp/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          metaAccessToken: metaAccessTokenInput,
+          metaPhoneNumberId: metaPhoneIdInput,
+        }),
+      });
+      if (res.ok) {
+        const data = await safeParseJson(res);
+        if (!data.nonJsonError) setWaStatus(data);
+        setMetaSavedBanner(true);
+        setTimeout(() => setMetaSavedBanner(false), 3000);
+      }
+    } catch {}
+  };
+
   const handleSimulateIncomingWhatsApp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!quickWaIncoming.trim() || isAutoReplyingWa) return;
 
     setIsAutoReplyingWa(true);
-    const contact = quickWaContact.trim() || "WhatsApp Client";
+    const contact = quickWaContact.trim() || "WhatsApp Contact";
     const phone = quickWaPhone.trim() || directWaPhone;
     const incomingText = quickWaIncoming.trim();
 
@@ -733,10 +757,10 @@ export default function App() {
       const isBengali = /[\u0980-\u09FF]/.test(incomingText);
       const isHindi = /[\u0900-\u097F]/.test(incomingText);
       const localFallbackReply = isBengali
-        ? `ধন্যবাদ ${contact}, আপনার মেসেজটি পেয়েছি। খুব শীঘ্রই জানাচ্ছি।`
+        ? `হ্যালো ${contact}! আপনার "${incomingText}" মেসেজটি পেয়েছি, বলুন কীভাবে সাহায্য করতে পারি?`
         : isHindi
-        ? `धन्यवाद ${contact}, आपका संदेश मिल गया है। मैं जल्द ही आपको अपडेट देता हूँ।`
-        : `Hi ${contact}, thank you for your message. I have received it and will respond shortly.`;
+        ? `नमस्ते ${contact}! आपके "${incomingText}" संदेश के बारे में मैं आपकी क्या मदद कर सकता हूँ?`
+        : `Hello ${contact}! Regarding "${incomingText}" — how can I help you right now?`;
 
       const generatedReply =
         data.aiReply && !data.nonJsonError ? data.aiReply : localFallbackReply;
@@ -808,46 +832,49 @@ export default function App() {
   const pendingTaskCount = tasks.filter((t) => !t.completed).length;
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
+    <div className="min-h-screen flex flex-col bg-[#F8FAFC] text-slate-900 selection:bg-emerald-600 selection:text-white">
       {/* Top Bar Contract: Zone 1 Brand | Zone 2 Nav Links | Zone 3 Primary Actions */}
-      <header className="sticky top-0 z-30 flex items-center justify-between px-6 py-3.5 bg-white border-b border-slate-200">
+      <header className="sticky top-0 z-30 flex items-center justify-between px-6 py-3.5 bg-white/95 backdrop-blur-md border-b border-slate-200/90 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
         <a
           href="#command"
           onClick={(e) => {
             e.preventDefault();
             setActiveTab("command");
           }}
-          className="text-lg font-bold tracking-tight text-slate-900 whitespace-nowrap"
+          className="flex items-center gap-2.5 text-lg font-bold tracking-tight text-slate-950 whitespace-nowrap"
         >
-          MS Agent
+          <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-900 text-white flex items-center justify-center text-xs font-mono font-bold shadow-sm">
+            MS
+          </span>
+          <span>MS Agent</span>
         </a>
 
-        <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
+        <nav className="hidden md:flex items-center gap-7 text-sm font-medium text-slate-600">
           <button
             onClick={() => setActiveTab("command")}
-            className={`py-1 transition-colors whitespace-nowrap border-b-2 ${
+            className={`py-1.5 transition-colors whitespace-nowrap border-b-2 ${
               activeTab === "command"
-                ? "border-slate-900 text-slate-900 font-semibold"
+                ? "border-emerald-600 text-slate-950 font-semibold"
                 : "border-transparent hover:text-slate-900"
             }`}
           >
-            Voice Command
+            Voice Command Hub
           </button>
           <button
             onClick={() => setActiveTab("whatsapp")}
-            className={`py-1 transition-colors whitespace-nowrap border-b-2 ${
+            className={`py-1.5 transition-colors whitespace-nowrap border-b-2 ${
               activeTab === "whatsapp"
-                ? "border-slate-900 text-slate-900 font-semibold"
+                ? "border-emerald-600 text-slate-950 font-semibold"
                 : "border-transparent hover:text-slate-900"
             }`}
           >
-            Direct WhatsApp Link ({waStatus.state === "connected" ? "LIVE" : whatsapps.length})
+            Direct WhatsApp ({waStatus.state === "connected" ? "LIVE" : whatsapps.length})
           </button>
           <button
             onClick={() => setActiveTab("emails")}
-            className={`py-1 transition-colors whitespace-nowrap border-b-2 ${
+            className={`py-1.5 transition-colors whitespace-nowrap border-b-2 ${
               activeTab === "emails"
-                ? "border-slate-900 text-slate-900 font-semibold"
+                ? "border-emerald-600 text-slate-950 font-semibold"
                 : "border-transparent hover:text-slate-900"
             }`}
           >
@@ -855,19 +882,19 @@ export default function App() {
           </button>
           <button
             onClick={() => setActiveTab("search")}
-            className={`py-1 transition-colors whitespace-nowrap border-b-2 ${
+            className={`py-1.5 transition-colors whitespace-nowrap border-b-2 ${
               activeTab === "search"
-                ? "border-slate-900 text-slate-900 font-semibold"
+                ? "border-emerald-600 text-slate-950 font-semibold"
                 : "border-transparent hover:text-slate-900"
             }`}
           >
-            Web Search
+            Web Search ({searches.length})
           </button>
           <button
             onClick={() => setActiveTab("tasks")}
-            className={`py-1 transition-colors whitespace-nowrap border-b-2 ${
+            className={`py-1.5 transition-colors whitespace-nowrap border-b-2 ${
               activeTab === "tasks"
-                ? "border-slate-900 text-slate-900 font-semibold"
+                ? "border-emerald-600 text-slate-950 font-semibold"
                 : "border-transparent hover:text-slate-900"
             }`}
           >
@@ -883,7 +910,7 @@ export default function App() {
             }}
             className={`flex items-center gap-2 px-3.5 py-2 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap ${
               autoSpeak
-                ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+                ? "bg-emerald-50/90 border-emerald-200 text-emerald-900"
                 : "bg-white border-slate-200 text-slate-600 hover:text-slate-900"
             }`}
             title="Toggle Automatic Voice Response"
@@ -899,10 +926,10 @@ export default function App() {
           <button
             onClick={isRecording ? stopVoiceRecording : startVoiceRecording}
             disabled={isProcessing}
-            className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg shadow-sm transition-all whitespace-nowrap ${
               isRecording
-                ? "bg-red-600 text-white hover:bg-red-700"
-                : "bg-slate-900 text-white hover:bg-slate-800"
+                ? "bg-red-600 text-white hover:bg-red-700 ring-4 ring-red-100"
+                : "bg-emerald-600 text-white hover:bg-emerald-500"
             } disabled:opacity-50`}
           >
             {isRecording ? (
@@ -923,34 +950,34 @@ export default function App() {
       {/* Main Workspace Container */}
       <div className="flex-1 flex flex-col lg:flex-row max-w-[1440px] w-full mx-auto">
         {/* Left Navigation & Autonomous Control Sidebar */}
-        <aside className="w-full lg:w-72 shrink-0 bg-white border-b lg:border-b-0 lg:border-r border-slate-200 p-6 flex flex-col justify-between gap-6">
+        <aside className="w-full lg:w-72 shrink-0 bg-white border-b lg:border-b-0 lg:border-r border-slate-200/90 p-6 flex flex-col justify-between gap-6">
           <div className="space-y-6">
             <div>
-              <h1 className="text-base font-semibold text-slate-900">
+              <h1 className="text-base font-bold tracking-tight text-slate-950">
                 Autonomous Executive Agent
               </h1>
               <p className="mt-1 text-xs text-slate-500 leading-relaxed">
-                Speak or type in English, Bengali (বাংলা), or Hindi (हिन्दी). Link your real WhatsApp for 24/7 automatic AI answers.
+                Speak or type in English, Bengali (বাংলা), or Hindi (हिन्दी). Direct 24/7 WhatsApp AI auto-responder.
               </p>
             </div>
 
             {/* Interactive Multilingual Voice & Auto-Pilot Box */}
-            <div className="p-4 rounded-xl bg-slate-900 text-white space-y-3.5">
+            <div className="p-4 rounded-2xl bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-white shadow-md space-y-3.5 border border-slate-800">
               <div className="flex items-center justify-between text-xs text-slate-300">
-                <span>Multilingual Voice Engine</span>
-                <span className="font-mono tabular-nums">
+                <span className="font-medium">Multilingual Voice Engine</span>
+                <span className="font-mono tabular-nums text-emerald-400 font-semibold">
                   {isRecording
                     ? `REC 00:0${recordingSeconds}`
                     : isSpeaking
                     ? "SPEAKING"
-                    : "AUTO-READY"}
+                    : "ONLINE"}
                 </span>
               </div>
 
               <button
                 onClick={isRecording ? stopVoiceRecording : startVoiceRecording}
                 disabled={isProcessing}
-                className={`w-full py-3 px-4 rounded-lg font-medium text-sm flex items-center justify-center gap-2.5 transition-transform active:scale-[0.99] ${
+                className={`w-full py-3 px-4 rounded-xl font-semibold text-sm flex items-center justify-center gap-2.5 shadow-sm transition-all active:scale-[0.99] ${
                   isRecording
                     ? "bg-red-600 hover:bg-red-500 text-white"
                     : "bg-emerald-600 hover:bg-emerald-500 text-white"
@@ -964,7 +991,7 @@ export default function App() {
                 ) : (
                   <>
                     <Mic className="w-4 h-4" />
-                    <span>Tap & Speak (EN / BN / HI)</span>
+                    <span>Tap & Speak (EN / বাংলা / हिं)</span>
                   </>
                 )}
               </button>
@@ -977,7 +1004,7 @@ export default function App() {
                   id="voice-select"
                   value={selectedVoice}
                   onChange={(e) => setSelectedVoice(e.target.value as VoiceOption)}
-                  className="bg-slate-800 text-white text-xs rounded px-2 py-1 border border-slate-700 focus:outline-none"
+                  className="bg-slate-800/90 text-white text-xs rounded-lg px-2.5 py-1.5 border border-slate-700 focus:outline-none focus:border-emerald-500"
                 >
                   <option value="Kore">Kore (Natural Multilingual)</option>
                   <option value="Zephyr">Zephyr (Executive Clear)</option>
@@ -987,7 +1014,7 @@ export default function App() {
                 </select>
               </div>
 
-              <div className="pt-2 border-t border-slate-800 space-y-2 text-xs">
+              <div className="pt-2.5 border-t border-slate-800/90 space-y-2 text-xs">
                 <label className="flex items-center justify-between cursor-pointer text-slate-300">
                   <span>Full Auto-Pilot Execution</span>
                   <input
@@ -1010,11 +1037,11 @@ export default function App() {
             </div>
 
             {/* Live WhatsApp Device Connection Status Card */}
-            <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2.5">
+            <div className="p-4 rounded-2xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/70 via-white to-emerald-50/30 space-y-2.5 shadow-xs">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-slate-900">WhatsApp Direct Link</span>
+                <span className="font-bold text-slate-900">WhatsApp AI Bridge</span>
                 <span
-                  className={`font-mono tabular-nums font-medium ${
+                  className={`font-mono tabular-nums font-bold ${
                     waStatus.state === "connected"
                       ? "text-emerald-700"
                       : waStatus.state === "qr_ready"
@@ -1023,7 +1050,7 @@ export default function App() {
                   }`}
                 >
                   {waStatus.state === "connected"
-                    ? "CONNECTED"
+                    ? "LIVE CONNECTED"
                     : waStatus.state === "qr_ready"
                     ? "SCAN QR"
                     : waStatus.state.toUpperCase()}
@@ -1032,19 +1059,19 @@ export default function App() {
 
               {waStatus.state === "connected" && waStatus.connectedUser ? (
                 <div className="text-xs text-slate-600 space-y-1">
-                  <div className="font-medium text-slate-900 truncate">
+                  <div className="font-semibold text-slate-900 truncate">
                     {waStatus.connectedUser.name}
                   </div>
-                  <div className="font-mono tabular-nums text-emerald-700">
+                  <div className="font-mono tabular-nums text-emerald-700 font-medium">
                     {waStatus.connectedUser.phone}
                   </div>
                   <div className="text-[11px] text-slate-500 pt-1">
-                    Incoming WhatsApp messages are automatically answered by AI.
+                    Answering all incoming WhatsApp messages with real AI answers.
                   </div>
                 </div>
               ) : (
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  Link your personal WhatsApp via QR code or Phone Pairing Code so the AI agent replies automatically when anyone messages you.
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Link your WhatsApp via QR Code, 8-Digit Pairing Code, or 24/7 Vercel Cloud Webhook.
                 </p>
               )}
 
@@ -1055,26 +1082,26 @@ export default function App() {
                     handleConnectRealWhatsApp(false);
                   }
                 }}
-                className="w-full py-2 px-3 bg-slate-900 text-white text-xs font-semibold rounded-lg hover:bg-slate-800 transition-colors flex items-center justify-center gap-1.5"
+                className="w-full py-2.5 px-3 bg-emerald-600 text-white text-xs font-semibold rounded-xl hover:bg-emerald-500 shadow-xs transition-all flex items-center justify-center gap-1.5"
               >
                 <QrCode className="w-3.5 h-3.5" />
                 <span>
                   {waStatus.state === "connected"
                     ? "Manage Linked WhatsApp"
-                    : "Link Real WhatsApp Now"}
+                    : "Connect WhatsApp Now"}
                 </span>
               </button>
             </div>
 
             {/* Sidebar Section Switcher */}
             <div className="space-y-1">
-              <div className="text-xs font-medium text-slate-400 pb-1.5">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 pb-1.5">
                 Workspace Modules
               </div>
               {(
                 [
                   { id: "command", label: "01. Voice & Auto-Pilot Hub", count: messages.length },
-                  { id: "whatsapp", label: "02. Direct WhatsApp Link & Auto-Reply", count: whatsapps.length },
+                  { id: "whatsapp", label: "02. Direct WhatsApp Link", count: whatsapps.length },
                   { id: "emails", label: "03. Automated Email Desk", count: emails.length },
                   { id: "search", label: "04. Live Google Search Desk", count: searches.length },
                   { id: "tasks", label: "05. Daily Notes & Task Ledger", count: tasks.length },
@@ -1083,14 +1110,20 @@ export default function App() {
                 <button
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium transition-colors ${
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all ${
                     activeTab === item.id
-                      ? "bg-slate-100 text-slate-900 font-semibold"
-                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                      ? "bg-slate-900 text-white font-semibold shadow-xs"
+                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                   }`}
                 >
                   <span className="truncate">{item.label}</span>
-                  <span className="font-mono tabular-nums text-slate-400">{item.count}</span>
+                  <span
+                    className={`font-mono tabular-nums ${
+                      activeTab === item.id ? "text-emerald-400" : "text-slate-400"
+                    }`}
+                  >
+                    {item.count}
+                  </span>
                 </button>
               ))}
             </div>
@@ -1100,17 +1133,17 @@ export default function App() {
           <div className="pt-4 border-t border-slate-200 space-y-2 text-xs text-slate-500">
             <div className="flex items-center justify-between">
               <span>Supported Languages</span>
-              <span className="text-slate-900 font-medium">EN · বাংলা · हिन्दी</span>
+              <span className="text-slate-900 font-semibold">EN · বাংলা · हिन्दी</span>
             </div>
             <div className="flex items-center justify-between">
               <span>WhatsApp Auto-Replied</span>
-              <span className="font-mono tabular-nums text-slate-900 font-medium">
+              <span className="font-mono tabular-nums text-emerald-700 font-semibold">
                 {whatsapps.filter((w) => w.status === "Auto-Replied").length} / {whatsapps.length}
               </span>
             </div>
             <div className="flex items-center justify-between">
               <span>Emails Auto-Dispatched</span>
-              <span className="font-mono tabular-nums text-slate-900 font-medium">
+              <span className="font-mono tabular-nums text-slate-900 font-semibold">
                 {emails.filter((e) => e.status === "Dispatched").length} / {emails.length}
               </span>
             </div>
@@ -1120,7 +1153,7 @@ export default function App() {
         {/* Main Content Viewport */}
         <main className="flex-1 p-6 lg:p-8 flex flex-col gap-6 min-w-0">
           {errorBanner && (
-            <div className="p-4 rounded-lg bg-red-50 border border-red-200 flex items-center justify-between gap-4 text-xs text-red-900">
+            <div className="p-4 rounded-xl bg-red-50 border border-red-200 flex items-center justify-between gap-4 text-xs text-red-900 shadow-xs">
               <span>{errorBanner}</span>
               <button
                 onClick={() => setErrorBanner(null)}
@@ -1135,20 +1168,20 @@ export default function App() {
           {activeTab === "command" && (
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
               {/* Left 7 Cols: Voice & Chat Conversation Stream */}
-              <section className="xl:col-span-7 bg-white border border-slate-200 rounded-xl flex flex-col h-[690px]">
-                <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+              <section className="xl:col-span-7 bg-white border border-slate-200/90 rounded-2xl shadow-xs flex flex-col h-[700px] overflow-hidden">
+                <div className="px-6 py-4 bg-gradient-to-r from-slate-900 via-slate-900 to-emerald-950 text-white flex items-center justify-between">
                   <div>
-                    <h2 className="text-base font-semibold text-slate-900">
+                    <h2 className="text-base font-bold tracking-tight">
                       01. Multilingual Voice & Autonomous Command Hub
                     </h2>
-                    <p className="text-xs text-slate-500">
-                      Speak in English, Bengali, or Hindi — the agent automatically executes your task and answers in the same language.
+                    <p className="text-xs text-slate-300 mt-0.5">
+                      Speak or type in English, Bengali (বাংলা), or Hindi (हिन्दी) — instant intelligent execution & voice answers.
                     </p>
                   </div>
                   {isSpeaking && (
                     <button
                       onClick={stopAudioPlayback}
-                      className="px-3 py-1.5 text-xs font-medium bg-amber-50 text-amber-900 border border-amber-200 rounded-lg flex items-center gap-1.5 whitespace-nowrap"
+                      className="px-3 py-1.5 text-xs font-semibold bg-amber-400 text-slate-950 rounded-lg flex items-center gap-1.5 whitespace-nowrap shadow-xs"
                     >
                       <Pause className="w-3.5 h-3.5" />
                       <span>Stop Voice</span>
@@ -1156,23 +1189,40 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Quick Multilingual Starters */}
-                <div className="px-6 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2 overflow-x-auto">
-                  <span className="text-xs text-slate-400 shrink-0">Try Auto-Pilot:</span>
-                  {QUICK_VOICE_PROMPTS.map((item, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => sendCommandToAgent(item.prompt, false)}
-                      disabled={isProcessing}
-                      className="px-2.5 py-1 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-md hover:border-slate-400 transition-colors whitespace-nowrap shrink-0 disabled:opacity-50"
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-
                 {/* Message Feed */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-slate-50/40">
+                  {messages.length === 0 && !isProcessing && (
+                    <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-4 py-12">
+                      <div className="w-14 h-14 rounded-2xl bg-emerald-600/10 border border-emerald-500/20 text-emerald-700 flex items-center justify-center">
+                        <Mic className="w-6 h-6" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <h3 className="text-base font-bold text-slate-900">
+                          MS Agent is Ready for Your Voice or Text Command
+                        </h3>
+                        <p className="text-xs text-slate-500 leading-relaxed">
+                          Ask any question, send WhatsApp messages, draft emails, or search live information in <strong>English</strong>, <strong>বাংলা (Bengali / Banglish)</strong>, or <strong>हिन्दी (Hindi)</strong>.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                        <button
+                          onClick={startVoiceRecording}
+                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl shadow-xs inline-flex items-center gap-1.5"
+                        >
+                          <Mic className="w-3.5 h-3.5" />
+                          <span>Start Speaking</span>
+                        </button>
+                        <button
+                          onClick={() => setActiveTab("whatsapp")}
+                          className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-xs inline-flex items-center gap-1.5"
+                        >
+                          <QrCode className="w-3.5 h-3.5" />
+                          <span>Link WhatsApp</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {messages.map((msg) => (
                     <div
                       key={msg.id}
@@ -1181,22 +1231,24 @@ export default function App() {
                       }`}
                     >
                       <div className="flex items-center gap-2 mb-1 text-xs text-slate-400">
-                        <span>{msg.role === "user" ? "You" : "MS Agent"}</span>
+                        <span className="font-medium text-slate-600">
+                          {msg.role === "user" ? "You" : "MS Agent"}
+                        </span>
                         <span aria-hidden="true">·</span>
                         <span className="font-mono tabular-nums">{msg.timestamp}</span>
                         {msg.isVoice && (
                           <>
                             <span aria-hidden="true">·</span>
-                            <span>Voice Input</span>
+                            <span className="text-emerald-700 font-medium">Voice</span>
                           </>
                         )}
                       </div>
 
                       <div
-                        className={`max-w-[88%] rounded-xl px-4 py-3 text-sm leading-relaxed ${
+                        className={`max-w-[88%] rounded-2xl px-4 py-3.5 text-sm leading-relaxed shadow-xs ${
                           msg.role === "user"
                             ? "bg-slate-900 text-white"
-                            : "bg-slate-100 text-slate-900"
+                            : "bg-white border border-slate-200/90 text-slate-900"
                         }`}
                       >
                         <p className="whitespace-pre-wrap">{msg.text}</p>
@@ -1204,7 +1256,7 @@ export default function App() {
                         {/* Executed Automatic Actions Summary inside Message */}
                         {msg.executedActions && msg.executedActions.length > 0 && (
                           <div className="mt-3 pt-3 border-t border-slate-200/80 space-y-2">
-                            <div className="text-xs font-semibold text-emerald-800">
+                            <div className="text-xs font-semibold text-emerald-700">
                               Automatically Executed ({msg.executedActions.length})
                             </div>
                             {msg.executedActions.map((act) => {
@@ -1291,12 +1343,12 @@ export default function App() {
                                   ? stopAudioPlayback()
                                   : speakResponse(msg.text, msg.id, msg.audioBase64)
                               }
-                              className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900"
+                              className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-800"
                             >
                               {playingMessageId === msg.id ? (
                                 <>
                                   <Square className="w-3 h-3 fill-current text-emerald-700" />
-                                  <span className="text-emerald-700">Stop Voice Playback</span>
+                                  <span>Stop Voice Playback</span>
                                 </>
                               ) : (
                                 <>
@@ -1312,7 +1364,7 @@ export default function App() {
                   ))}
 
                   {isProcessing && (
-                    <div className="flex items-center gap-3 text-xs text-slate-500 py-2">
+                    <div className="flex items-center gap-3 text-xs text-slate-600 py-2">
                       <RefreshCw className="w-4 h-4 animate-spin text-emerald-600" />
                       <span>{statusMessage || "Processing your request..."}</span>
                     </div>
@@ -1326,16 +1378,16 @@ export default function App() {
                     e.preventDefault();
                     sendCommandToAgent(inputText, false);
                   }}
-                  className="p-4 border-t border-slate-200 bg-slate-50 flex items-center gap-2.5"
+                  className="p-4 border-t border-slate-200 bg-white flex items-center gap-2.5"
                 >
                   <button
                     type="button"
                     onClick={isRecording ? stopVoiceRecording : startVoiceRecording}
                     disabled={isProcessing}
-                    className={`p-3 rounded-lg transition-colors shrink-0 ${
+                    className={`p-3 rounded-xl transition-all shrink-0 ${
                       isRecording
-                        ? "bg-red-600 text-white"
-                        : "bg-white border border-slate-300 text-slate-700 hover:bg-slate-100"
+                        ? "bg-red-600 text-white ring-4 ring-red-100"
+                        : "bg-slate-100 border border-slate-200 text-slate-700 hover:bg-slate-200"
                     }`}
                     title={
                       isRecording
@@ -1357,18 +1409,18 @@ export default function App() {
                     placeholder={
                       isRecording
                         ? "Listening (English / বাংলা / हिन्दी)... Auto-sends when you pause"
-                        : "Ask or command in English, বাংলা, or हिन्दी (e.g., Send WhatsApp, Email, Search)..."
+                        : "Ask anything or command in English, বাংলা, or हिन्दी..."
                     }
                     disabled={isRecording || isProcessing}
-                    className="flex-1 bg-white border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-900"
+                    className="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-emerald-600"
                   />
 
                   <button
                     type="submit"
                     disabled={!inputText.trim() || isProcessing || isRecording}
-                    className="px-4 py-2.5 bg-slate-900 text-white text-xs font-semibold rounded-lg hover:bg-slate-800 transition-colors flex items-center gap-1.5 whitespace-nowrap disabled:opacity-40"
+                    className="px-5 py-2.5 bg-emerald-600 text-white text-xs font-semibold rounded-xl hover:bg-emerald-500 shadow-xs transition-all flex items-center gap-1.5 whitespace-nowrap disabled:opacity-40"
                   >
-                    <span>Auto-Execute</span>
+                    <span>Send</span>
                     <Send className="w-3.5 h-3.5" />
                   </button>
                 </form>
@@ -1377,21 +1429,21 @@ export default function App() {
               {/* Right 5 Cols: Direct WhatsApp Live Link Card, Automated Emails, and Tasks */}
               <section className="xl:col-span-5 space-y-6">
                 {/* Direct WhatsApp Live Bridge Card */}
-                <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+                <div className="bg-white border border-slate-200/90 rounded-2xl shadow-xs p-5 space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="text-sm font-semibold text-slate-900">
+                      <h3 className="text-sm font-bold text-slate-900">
                         02. Direct WhatsApp Live Link & Auto-Reply
                       </h3>
                       <p className="text-xs text-slate-500">
                         {waStatus.state === "connected" && waStatus.connectedUser
-                          ? `Connected to ${waStatus.connectedUser.phone} — Auto-answering all incoming messages`
-                          : "Link your WhatsApp via QR Code or Pairing Code for real-time auto-replies"}
+                          ? `Connected to ${waStatus.connectedUser.phone} — Answering all incoming messages`
+                          : "Link your WhatsApp for real-time AI answers"}
                       </p>
                     </div>
                     <button
                       onClick={() => setActiveTab("whatsapp")}
-                      className="text-xs font-medium text-emerald-700 hover:underline inline-flex items-center gap-1 shrink-0"
+                      className="text-xs font-semibold text-emerald-700 hover:underline inline-flex items-center gap-1 shrink-0"
                     >
                       <span>
                         {waStatus.state === "connected" ? "Live Console" : "Link WhatsApp"}
@@ -1402,13 +1454,13 @@ export default function App() {
 
                   {/* Quick QR / Link Banner if not connected yet */}
                   {waStatus.state !== "connected" && (
-                    <div className="p-3.5 rounded-lg bg-slate-900 text-white flex items-center justify-between gap-3">
+                    <div className="p-4 rounded-xl bg-gradient-to-r from-slate-900 to-emerald-950 text-white flex items-center justify-between gap-3">
                       <div className="text-xs space-y-0.5">
                         <div className="font-semibold">
                           Connect Your Personal WhatsApp Account
                         </div>
                         <div className="text-slate-300">
-                          Scan QR or enter Phone Pairing Code so AI replies automatically when anyone messages you.
+                          Scan QR, enter 8-Digit Code, or enable 24/7 Vercel Webhook.
                         </div>
                       </div>
                       <button
@@ -1418,7 +1470,7 @@ export default function App() {
                             handleConnectRealWhatsApp(false);
                           }
                         }}
-                        className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg whitespace-nowrap shrink-0"
+                        className="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold rounded-lg whitespace-nowrap shrink-0"
                       >
                         Connect Now
                       </button>
@@ -1428,10 +1480,10 @@ export default function App() {
                   {/* Quick Incoming WhatsApp Auto-Answer Trigger */}
                   <form
                     onSubmit={handleSimulateIncomingWhatsApp}
-                    className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2.5"
+                    className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5"
                   >
-                    <div className="text-xs font-medium text-slate-700">
-                      Instant WhatsApp Auto-Reply & Direct Send (EN / বাংলা / हिन्दी)
+                    <div className="text-xs font-semibold text-slate-800">
+                      Test Instant WhatsApp AI Answer & Direct Send (EN / বাংলা / हिन्दी)
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <input
@@ -1439,14 +1491,14 @@ export default function App() {
                         value={quickWaContact}
                         onChange={(e) => setQuickWaContact(e.target.value)}
                         placeholder="Sender Name (e.g. Rahul / तनवीर)"
-                        className="bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-slate-900"
+                        className="bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-emerald-600"
                       />
                       <input
                         type="text"
                         value={quickWaPhone}
                         onChange={(e) => setQuickWaPhone(e.target.value)}
                         placeholder="Phone (+880... / +91...)"
-                        className="bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs font-mono tabular-nums focus:outline-none focus:border-slate-900"
+                        className="bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-mono tabular-nums focus:outline-none focus:border-emerald-600"
                       />
                     </div>
                     <div className="flex items-center gap-2">
@@ -1454,15 +1506,15 @@ export default function App() {
                         type="text"
                         value={quickWaIncoming}
                         onChange={(e) => setQuickWaIncoming(e.target.value)}
-                        placeholder="Incoming message to auto-answer & send..."
-                        className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-slate-900"
+                        placeholder="Type any question or message to test AI answer..."
+                        className="flex-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-emerald-600"
                       />
                       <button
                         type="submit"
                         disabled={!quickWaIncoming.trim() || isAutoReplyingWa}
-                        className="px-3 py-1.5 bg-emerald-600 text-white text-xs font-medium rounded hover:bg-emerald-700 whitespace-nowrap disabled:opacity-50"
+                        className="px-3.5 py-1.5 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-500 whitespace-nowrap disabled:opacity-50"
                       >
-                        {isAutoReplyingWa ? "Replying..." : "Auto-Answer"}
+                        {isAutoReplyingWa ? "Answering..." : "AI Answer"}
                       </button>
                     </div>
                   </form>
@@ -1473,21 +1525,21 @@ export default function App() {
                       return (
                         <div key={wa.id} className="py-3 first:pt-0 last:pb-0 space-y-1.5">
                           <div className="flex items-center justify-between text-xs text-slate-500">
-                            <span className="font-medium text-slate-900">
-                              {wa.contactName} ({wa.phoneNumber})
+                            <span className="font-semibold text-slate-900">
+                              {wa.contactName} {wa.phoneNumber ? `(${wa.phoneNumber})` : ""}
                             </span>
                             <span className="font-mono tabular-nums">{wa.timestamp}</span>
                           </div>
                           <p className="text-xs text-slate-500 line-clamp-1">
                             Incoming: "{wa.incomingMessage}"
                           </p>
-                          <p className="text-xs text-slate-800 bg-emerald-50/60 p-2 rounded border border-emerald-100">
-                            AI Auto-Reply: "{wa.aiReply}"
+                          <p className="text-xs text-slate-900 bg-emerald-50/70 p-2.5 rounded-lg border border-emerald-200/70">
+                            AI Answer: "{wa.aiReply}"
                           </p>
                           <div className="flex items-center justify-between pt-1 text-xs">
-                            <span className="text-emerald-700 font-medium">
+                            <span className="text-emerald-700 font-semibold">
                               {wa.isLiveDeviceMessage
-                                ? "Sent via Linked WhatsApp Device"
+                                ? "Sent via Linked WhatsApp"
                                 : wa.status}
                             </span>
                             <a
@@ -1496,7 +1548,7 @@ export default function App() {
                               )}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="font-medium text-slate-900 hover:underline inline-flex items-center gap-1"
+                              className="font-semibold text-slate-900 hover:underline inline-flex items-center gap-1"
                             >
                               <span>Open in WhatsApp</span>
                               <ExternalLink className="w-3 h-3" />
@@ -1509,91 +1561,103 @@ export default function App() {
                 </div>
 
                 {/* Automated Email Queue Preview */}
-                <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+                <div className="bg-white border border-slate-200/90 rounded-2xl shadow-xs p-5 space-y-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-slate-900">
+                    <h3 className="text-sm font-bold text-slate-900">
                       03. Automated Email Dispatch Log
                     </h3>
                     <button
                       onClick={() => setActiveTab("emails")}
-                      className="text-xs font-medium text-slate-600 hover:text-slate-900 inline-flex items-center gap-1"
+                      className="text-xs font-semibold text-slate-600 hover:text-slate-900 inline-flex items-center gap-1"
                     >
                       <span>View All ({emails.length})</span>
                       <ArrowUpRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
 
-                  <div className="divide-y divide-slate-100">
-                    {emails.slice(0, 2).map((em) => (
-                      <div key={em.id} className="py-3 first:pt-0 last:pb-0 space-y-1.5">
-                        <div className="flex items-center justify-between text-xs text-slate-500">
-                          <span className="font-medium text-slate-800 truncate">{em.to}</span>
-                          <span className="font-mono tabular-nums">{em.timestamp}</span>
+                  {emails.length === 0 ? (
+                    <p className="text-xs text-slate-400 py-2">
+                      No emails dispatched yet. Ask by voice or text to compose and send emails.
+                    </p>
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {emails.slice(0, 2).map((em) => (
+                        <div key={em.id} className="py-3 first:pt-0 last:pb-0 space-y-1.5">
+                          <div className="flex items-center justify-between text-xs text-slate-500">
+                            <span className="font-medium text-slate-800 truncate">{em.to}</span>
+                            <span className="font-mono tabular-nums">{em.timestamp}</span>
+                          </div>
+                          <div className="text-sm font-medium text-slate-900 truncate">
+                            {em.subject}
+                          </div>
+                          <div className="flex items-center justify-between pt-1">
+                            <span className="text-xs text-slate-500">
+                              {em.status} · Priority: {em.priority}
+                            </span>
+                            <button
+                              onClick={() => handleOpenMailto(em)}
+                              className="text-xs font-semibold text-emerald-700 hover:underline"
+                            >
+                              Open Mail Client
+                            </button>
+                          </div>
                         </div>
-                        <div className="text-sm font-medium text-slate-900 truncate">
-                          {em.subject}
-                        </div>
-                        <div className="flex items-center justify-between pt-1">
-                          <span className="text-xs text-slate-500">
-                            {em.status} · Priority: {em.priority}
-                          </span>
-                          <button
-                            onClick={() => handleOpenMailto(em)}
-                            className="text-xs font-medium text-slate-700 hover:underline"
-                          >
-                            Open Mail Client
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Active Systematic Tasks Preview */}
-                <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+                <div className="bg-white border border-slate-200/90 rounded-2xl shadow-xs p-5 space-y-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-slate-900">
+                    <h3 className="text-sm font-bold text-slate-900">
                       04. Systematic Priority Notes
                     </h3>
                     <button
                       onClick={() => setActiveTab("tasks")}
-                      className="text-xs font-medium text-slate-600 hover:text-slate-900 inline-flex items-center gap-1"
+                      className="text-xs font-semibold text-slate-600 hover:text-slate-900 inline-flex items-center gap-1"
                     >
                       <span>Manage ({tasks.length})</span>
                       <ArrowUpRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
 
-                  <div className="divide-y divide-slate-100">
-                    {tasks.slice(0, 3).map((tsk) => (
-                      <div
-                        key={tsk.id}
-                        className="py-2.5 first:pt-0 last:pb-0 flex items-start justify-between gap-3"
-                      >
-                        <label className="flex items-start gap-2.5 cursor-pointer text-xs">
-                          <input
-                            type="checkbox"
-                            checked={tsk.completed}
-                            onChange={() => toggleTaskCompletion(tsk.id)}
-                            className="mt-0.5 rounded border-slate-300 text-slate-900 focus:ring-0"
-                          />
-                          <div>
-                            <div
-                              className={`font-medium ${
-                                tsk.completed ? "line-through text-slate-400" : "text-slate-900"
-                              }`}
-                            >
-                              {tsk.title}
+                  {tasks.length === 0 ? (
+                    <p className="text-xs text-slate-400 py-2">
+                      No tasks logged yet. Ask MS Agent to schedule a note or reminder.
+                    </p>
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {tasks.slice(0, 3).map((tsk) => (
+                        <div
+                          key={tsk.id}
+                          className="py-2.5 first:pt-0 last:pb-0 flex items-start justify-between gap-3"
+                        >
+                          <label className="flex items-start gap-2.5 cursor-pointer text-xs">
+                            <input
+                              type="checkbox"
+                              checked={tsk.completed}
+                              onChange={() => toggleTaskCompletion(tsk.id)}
+                              className="mt-0.5 rounded border-slate-300 text-emerald-600 focus:ring-0"
+                            />
+                            <div>
+                              <div
+                                className={`font-medium ${
+                                  tsk.completed ? "line-through text-slate-400" : "text-slate-900"
+                                }`}
+                              >
+                                {tsk.title}
+                              </div>
+                              <div className="text-slate-400 mt-0.5">
+                                {tsk.category} ·{" "}
+                                <span className="font-mono tabular-nums">{tsk.dueTime}</span>
+                              </div>
                             </div>
-                            <div className="text-slate-400 mt-0.5">
-                              {tsk.category} ·{" "}
-                              <span className="font-mono tabular-nums">{tsk.dueTime}</span>
-                            </div>
-                          </div>
-                        </label>
-                      </div>
-                    ))}
-                  </div>
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </section>
             </div>
@@ -1601,27 +1665,27 @@ export default function App() {
 
           {/* TAB 2: AUTOMATED EMAIL DESK */}
           {activeTab === "emails" && (
-            <section className="bg-white border border-slate-200 rounded-xl p-6 space-y-6">
+            <section className="bg-white border border-slate-200/90 rounded-2xl shadow-xs p-6 space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900">
+                  <h2 className="text-lg font-bold text-slate-900">
                     03. Automated Email Dispatch Desk
                   </h2>
                   <p className="text-xs text-slate-500">
-                    Say by voice in English, Bengali, or Hindi: "Send an email to Rahim about tomorrow's 11 AM project review" — AI automatically composes and dispatches it.
+                    Say by voice in English, Bengali, or Hindi: "Send an email to rahim@company.com about tomorrow's 11 AM project review" — AI automatically composes and dispatches it.
                   </p>
                 </div>
 
-                <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg self-start">
+                <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl self-start">
                   {(
                     ["all", "Dispatched", "Drafted by AI", "Incoming Needs Reply"] as const
                   ).map((st) => (
                     <button
                       key={st}
                       onClick={() => setEmailFilter(st)}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
+                      className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${
                         emailFilter === st
-                          ? "bg-white text-slate-900 shadow-sm"
+                          ? "bg-white text-slate-900 shadow-xs font-semibold"
                           : "text-slate-600 hover:text-slate-900"
                       }`}
                     >
@@ -1634,19 +1698,7 @@ export default function App() {
               <div className="divide-y divide-slate-200">
                 {filteredEmails.length === 0 ? (
                   <div className="py-12 text-center space-y-3">
-                    <p className="text-sm text-slate-500">No emails in this filter view.</p>
-                    <button
-                      onClick={() => {
-                        setActiveTab("command");
-                        sendCommandToAgent(
-                          "Send a formal email to the client with our updated project proposal and schedule.",
-                          false
-                        );
-                      }}
-                      className="px-4 py-2 bg-slate-900 text-white text-xs font-medium rounded-lg"
-                    >
-                      Auto-Dispatch Sample Email with AI
-                    </button>
+                    <p className="text-sm text-slate-500">No emails in this view yet.</p>
                   </div>
                 ) : (
                   filteredEmails.map((email) => (
@@ -1693,7 +1745,7 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="p-4 rounded-lg bg-slate-50 border border-slate-200/80 text-sm text-slate-800 whitespace-pre-wrap leading-relaxed">
+                      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 text-sm text-slate-800 whitespace-pre-wrap leading-relaxed">
                         {email.body}
                       </div>
                     </div>
@@ -1705,27 +1757,27 @@ export default function App() {
 
           {/* TAB 3: DIRECT WHATSAPP DEVICE LINK & AUTO-REPLY HUB */}
           {activeTab === "whatsapp" && (
-            <section className="bg-white border border-slate-200 rounded-xl p-6 space-y-6">
+            <section className="bg-white border border-slate-200/90 rounded-2xl shadow-xs p-6 space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900">
+                  <h2 className="text-lg font-bold text-slate-900">
                     02. Direct WhatsApp Device Link & 24/7 Autonomous AI Auto-Reply
                   </h2>
                   <p className="text-xs text-slate-500">
-                    Link your real WhatsApp account below using QR Code or Phone Pairing Code. Whenever anyone sends you a message on WhatsApp, the AI Agent automatically reads it and replies in their exact language (English, বাংলা, or हिन्दी).
+                    Link your WhatsApp using QR Code or 8-Digit Pairing Code, or configure the 24/7 Vercel Cloud Webhook below. MS Agent reads every incoming message and replies with a real, direct answer in the sender's language.
                   </p>
                 </div>
 
-                <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg self-start">
+                <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl self-start">
                   {(
                     ["all", "Auto-Replied", "Ready to Send", "Pending AI Answer"] as const
                   ).map((st) => (
                     <button
                       key={st}
                       onClick={() => setWaFilter(st)}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
+                      className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${
                         waFilter === st
-                          ? "bg-white text-slate-900 shadow-sm"
+                          ? "bg-white text-slate-900 shadow-xs font-semibold"
                           : "text-slate-600 hover:text-slate-900"
                       }`}
                     >
@@ -1736,11 +1788,11 @@ export default function App() {
               </div>
 
               {/* REAL WHATSAPP MULTI-DEVICE LINK PANEL (QR Code + Pairing Code) */}
-              <div className="p-5 rounded-xl bg-slate-50 border border-slate-200 grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+              <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
                 <div className="lg:col-span-7 space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <h3 className="text-sm font-semibold text-slate-900">
+                      <h3 className="text-sm font-bold text-slate-900">
                         Live WhatsApp Multi-Device Connection
                       </h3>
                       <p className="text-xs text-slate-500">
@@ -1748,7 +1800,7 @@ export default function App() {
                       </p>
                     </div>
                     <span
-                      className={`text-xs font-mono tabular-nums font-semibold ${
+                      className={`text-xs font-mono tabular-nums font-bold ${
                         waStatus.state === "connected"
                           ? "text-emerald-700"
                           : waStatus.state === "qr_ready"
@@ -1761,10 +1813,10 @@ export default function App() {
                   </div>
 
                   {waStatus.state === "connected" && waStatus.connectedUser ? (
-                    <div className="p-4 rounded-lg bg-emerald-50 border border-emerald-200 space-y-3">
+                    <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 space-y-3">
                       <div className="flex items-center justify-between">
                         <div>
-                          <div className="text-sm font-semibold text-emerald-950">
+                          <div className="text-sm font-bold text-emerald-950">
                             Connected: {waStatus.connectedUser.name}
                           </div>
                           <div className="text-xs font-mono tabular-nums text-emerald-800">
@@ -1773,7 +1825,7 @@ export default function App() {
                         </div>
                         <button
                           onClick={handleDisconnectRealWhatsApp}
-                          className="px-3 py-1.5 bg-white text-red-700 border border-red-200 text-xs font-medium rounded-lg hover:bg-red-50 inline-flex items-center gap-1.5"
+                          className="px-3 py-1.5 bg-white text-red-700 border border-red-200 text-xs font-semibold rounded-lg hover:bg-red-50 inline-flex items-center gap-1.5"
                         >
                           <Power className="w-3.5 h-3.5" />
                           <span>Unlink Device</span>
@@ -1781,7 +1833,7 @@ export default function App() {
                       </div>
 
                       <div className="pt-2 border-t border-emerald-200/70 flex flex-wrap items-center gap-6 text-xs text-emerald-950">
-                        <label className="flex items-center gap-2 cursor-pointer font-medium">
+                        <label className="flex items-center gap-2 cursor-pointer font-semibold">
                           <input
                             type="checkbox"
                             checked={waStatus.autoReplyEnabled}
@@ -1818,7 +1870,7 @@ export default function App() {
                         <button
                           onClick={() => handleConnectRealWhatsApp(false)}
                           disabled={isConnectingWa}
-                          className="px-4 py-2.5 bg-slate-900 text-white text-xs font-semibold rounded-lg hover:bg-slate-800 transition-colors inline-flex items-center gap-2 disabled:opacity-50"
+                          className="px-4 py-2.5 bg-emerald-600 text-white text-xs font-semibold rounded-xl hover:bg-emerald-500 shadow-xs transition-all inline-flex items-center gap-2 disabled:opacity-50"
                         >
                           <QrCode className="w-4 h-4" />
                           <span>
@@ -1834,7 +1886,7 @@ export default function App() {
                           <button
                             onClick={() => handleConnectRealWhatsApp(true)}
                             disabled={isConnectingWa}
-                            className="px-3 py-2.5 bg-white border border-slate-300 text-slate-700 text-xs font-medium rounded-lg hover:bg-slate-100 transition-colors"
+                            className="px-3.5 py-2.5 bg-white border border-slate-300 text-slate-700 text-xs font-medium rounded-xl hover:bg-slate-100 transition-colors"
                           >
                             Reset Session
                           </button>
@@ -1844,10 +1896,10 @@ export default function App() {
                       {/* Option B: Link with Phone Number Pairing Code */}
                       <form
                         onSubmit={handleRequestPairingCode}
-                        className="p-3.5 bg-white rounded-lg border border-slate-200 space-y-2"
+                        className="p-3.5 bg-white rounded-xl border border-slate-200 space-y-2"
                       >
-                        <div className="text-xs font-medium text-slate-800 flex items-center gap-1.5">
-                          <Smartphone className="w-3.5 h-3.5 text-slate-600" />
+                        <div className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                          <Smartphone className="w-3.5 h-3.5 text-emerald-700" />
                           <span>Or Link Using Phone Number Pairing Code (No Camera Needed)</span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -1855,19 +1907,19 @@ export default function App() {
                             type="text"
                             value={pairingPhoneInput}
                             onChange={(e) => setPairingPhoneInput(e.target.value)}
-                            placeholder="Enter country code + phone (e.g. +8801711002244)"
-                            className="flex-1 bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs font-mono tabular-nums focus:outline-none focus:border-slate-900"
+                            placeholder="Enter country code + phone (e.g. +88017... or +9198...)"
+                            className="flex-1 bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs font-mono tabular-nums focus:outline-none focus:border-emerald-600"
                           />
                           <button
                             type="submit"
                             disabled={isRequestingPairCode}
-                            className="px-3.5 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 whitespace-nowrap disabled:opacity-50"
+                            className="px-3.5 py-2 bg-slate-900 text-white text-xs font-semibold rounded-lg hover:bg-slate-800 whitespace-nowrap disabled:opacity-50"
                           >
                             {isRequestingPairCode ? "Requesting..." : "Get 8-Digit Code"}
                           </button>
                         </div>
                         {waStatus.pairingCode && (
-                          <div className="pt-2 flex items-center justify-between text-xs text-emerald-900 bg-emerald-50 px-3 py-2 rounded border border-emerald-200">
+                          <div className="pt-2 flex items-center justify-between text-xs text-emerald-900 bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-200">
                             <span>Enter this code on your phone in WhatsApp Linked Devices:</span>
                             <span className="font-mono tabular-nums text-base font-bold tracking-wider">
                               {waStatus.pairingCode}
@@ -1880,17 +1932,17 @@ export default function App() {
                 </div>
 
                 {/* Right 5 Cols: QR Code Display Box */}
-                <div className="lg:col-span-5 flex flex-col items-center justify-center p-5 bg-white rounded-xl border border-slate-200 min-h-[260px]">
+                <div className="lg:col-span-5 flex flex-col items-center justify-center p-5 bg-white rounded-2xl border border-slate-200 min-h-[260px]">
                   {waStatus.state === "connected" && waStatus.connectedUser ? (
                     <div className="text-center space-y-2 p-4">
                       <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto">
                         <Check className="w-6 h-6" />
                       </div>
-                      <div className="text-sm font-semibold text-slate-900">
+                      <div className="text-sm font-bold text-slate-900">
                         Live WhatsApp Auto-Agent Active
                       </div>
                       <p className="text-xs text-slate-500 max-w-xs">
-                        When anyone sends a message to {waStatus.connectedUser.phone}, MS Agent will automatically reply on WhatsApp in real time.
+                        When anyone sends a message to {waStatus.connectedUser.phone}, MS Agent will automatically answer their question on WhatsApp in real time.
                       </p>
                     </div>
                   ) : waStatus.qrDataUrl ? (
@@ -1935,6 +1987,51 @@ export default function App() {
                   )}
                 </div>
               </div>
+
+              {/* VERCEL 24/7 ALWAYS-ON CLOUD WEBHOOK CONFIGURATION */}
+              <form
+                onSubmit={handleSaveMetaCloudConfig}
+                className="p-4 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-emerald-950 text-white space-y-3"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+                      Vercel 24/7 Background Mode (Even When Browser Tab is Closed)
+                    </h3>
+                    <p className="text-xs text-slate-300 mt-0.5">
+                      Keep this tab open on Vercel for QR WebSocket auto-keepalive, OR connect Meta WhatsApp Cloud API Webhook (<code className="text-emerald-300">/api/whatsapp/webhook</code>) so Vercel replies 24/7 even when your PC/phone browser is closed.
+                    </p>
+                  </div>
+                  <span className="text-xs font-mono text-emerald-300 shrink-0">
+                    {waStatus.cloudWebhookConfigured
+                      ? "CLOUD WEBHOOK: ACTIVE"
+                      : "VERIFY TOKEN: ms_agent_verify_token"}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-center">
+                  <input
+                    type="password"
+                    value={metaAccessTokenInput}
+                    onChange={(e) => setMetaAccessTokenInput(e.target.value)}
+                    placeholder="Optional: WHATSAPP_ACCESS_TOKEN (Meta Cloud API)"
+                    className="md:col-span-5 bg-slate-800/90 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder:text-slate-400 focus:outline-none focus:border-emerald-400"
+                  />
+                  <input
+                    type="text"
+                    value={metaPhoneIdInput}
+                    onChange={(e) => setMetaPhoneIdInput(e.target.value)}
+                    placeholder="Optional: WHATSAPP_PHONE_NUMBER_ID"
+                    className="md:col-span-5 bg-slate-800/90 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-white placeholder:text-slate-400 focus:outline-none focus:border-emerald-400"
+                  />
+                  <button
+                    type="submit"
+                    className="md:col-span-2 py-2 px-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold rounded-lg transition-colors whitespace-nowrap"
+                  >
+                    {metaSavedBanner ? "Saved!" : "Save Cloud Key"}
+                  </button>
+                </div>
+              </form>
 
               {/* Instant Test / Direct Sender Bar */}
               <form

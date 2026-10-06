@@ -30,25 +30,108 @@ function isRateLimitOrQuotaError(err: any): boolean {
   );
 }
 
-// Intelligent multilingual conversational engine for natural replies even when Gemini API quota is temporarily exhausted
-function generateIntelligentConversationalAnswer(
+// Live Knowledge & Web Answer Fetcher (DuckDuckGo Instant Answer + Wikipedia REST API) for zero-quota factual Q&A
+async function fetchLiveKnowledgeAnswer(
+  rawQuery: string,
+  lang: "bn" | "hi" | "en"
+): Promise<string | null> {
+  const cleanQ = rawQuery
+    .replace(
+      /^(what is|who is|where is|tell me about|search|define|meaning of|কি|কে|কোথায়|বলো|জানাও|সম্পর্কে বলো|kake bole|ki|ke|kothay|क्या है|कौन है|कहाँ है)\s+/i,
+      ""
+    )
+    .replace(/[?।!]/g, "")
+    .trim();
+
+  if (!cleanQ || cleanQ.length < 2) return null;
+
+  // 1. Try Wikipedia Summary in target language first, then English
+  const wikiLangs = lang === "bn" ? ["bn", "en"] : lang === "hi" ? ["hi", "en"] : ["en"];
+  for (const wl of wikiLangs) {
+    try {
+      const searchUrl = `https://${wl}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
+        cleanQ
+      )}&utf8=&format=json&origin=*&srlimit=1`;
+      const sRes = await Promise.race([
+        fetch(searchUrl),
+        new Promise<null>((r) => setTimeout(() => r(null), 2200)),
+      ]);
+      if (sRes && (sRes as Response).ok) {
+        const sData: any = await (sRes as Response).json();
+        const topTitle = sData?.query?.search?.[0]?.title;
+        if (topTitle) {
+          const sumUrl = `https://${wl}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(
+            topTitle
+          )}`;
+          const sumRes = await Promise.race([
+            fetch(sumUrl),
+            new Promise<null>((r) => setTimeout(() => r(null), 2200)),
+          ]);
+          if (sumRes && (sumRes as Response).ok) {
+            const sumData: any = await (sumRes as Response).json();
+            if (sumData?.extract && sumData.extract.length > 25) {
+              const sentences = String(sumData.extract)
+                .split(/(?<=[.।?!])\s+/)
+                .slice(0, 3)
+                .join(" ");
+              return sentences;
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Try DuckDuckGo Instant Answer API
+  try {
+    const ddgUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(
+      cleanQ
+    )}&format=json&no_html=1&skip_disambig=1`;
+    const dRes = await Promise.race([
+      fetch(ddgUrl),
+      new Promise<null>((r) => setTimeout(() => r(null), 2000)),
+    ]);
+    if (dRes && (dRes as Response).ok) {
+      const dData: any = await (dRes as Response).json();
+      if (dData?.AbstractText) {
+        return String(dData.AbstractText).slice(0, 380);
+      }
+      if (dData?.RelatedTopics?.[0]?.Text) {
+        return String(dData.RelatedTopics[0].Text).slice(0, 380);
+      }
+    }
+  } catch {}
+
+  return null;
+}
+
+// Intelligent multilingual conversational engine that directly answers messages in English, Bengali, Banglish, Hindi, or Hinglish
+async function generateIntelligentConversationalAnswer(
   rawText: string,
   senderName = ""
-): string {
+): Promise<string> {
   const text = String(rawText || "").trim();
   const lower = text.toLowerCase();
   const isBengaliScript = /[\u0980-\u09FF]/.test(text);
   const isHindiScript = /[\u0900-\u097F]/.test(text);
 
-  // Detect Banglish (Romanized Bengali)
+  // Comprehensive Banglish (Romanized Bengali) detector
   const banglishRegex =
-    /\b(kemon|achhen|achen|acho|kothay|ki korcho|ki koren|bhalo|valo|dhonnobad|shuvo|kobe|kokhon|keno|tumi|apni|amake|amar|ekta|kore|daw|dao|bolen|bolo|bhai|dada|apu|khabar|asta|ashbo|jabo|parbo|hobe|lagbe|dorkar|somoy|koto|taka|dam)\b/i;
+    /\b(kemon|kmn|achhen|achen|acho|achi|kothay|koi|ki|korcho|korchen|koren|korbo|bhalo|valo|dhonnobad|shuvo|kobe|kokhon|keno|tumi|apni|tui|amake|amar|tomar|apnar|ekta|kore|daw|dao|den|bolen|bolo|bolun|bhai|bhaiya|dada|apu|didi|khabar|khobor|khbr|ashbo|jabo|parbo|hobe|lagbe|dorkar|somoy|koto|taka|dam|ache|nei|nai|hoye|geche|gese|kথা|বলেন|কাজ|হ্যালো)\b/i;
   const isBanglish = !isBengaliScript && !isHindiScript && banglishRegex.test(lower);
 
-  // Detect Hinglish (Romanized Hindi)
+  // Comprehensive Hinglish (Romanized Hindi) detector
   const hinglishRegex =
-    /\b(kaise|kaisa|kaisi|kahan|kya|kar rahe|thik|theek|accha|acha|shukriya|dhanyawad|kab|kyu|kyun|tum|aap|mujhe|mera|meri|ek|kardo|karo|batao|bataiye|bhai|kitna|paisa|waqt|samay|milega|hoga)\b/i;
+    /\b(kaise|kaisa|kaisi|kahan|kya|kar rahe|kr rhe|thik|theek|accha|acha|shukriya|dhanyawad|kab|kyu|kyun|tum|aap|mujhe|mera|meri|apka|ek|kardo|karo|batao|bataiye|bhai|kitna|paisa|waqt|samay|milega|hoga|hain|hai|nahi|nhi)\b/i;
   const isHinglish = !isBengaliScript && !isHindiScript && !isBanglish && hinglishRegex.test(lower);
+
+  const langMode: "bn" | "hi" | "en" =
+    isBengaliScript || isBanglish ? "bn" : isHindiScript || isHinglish ? "hi" : "en";
+
+  const cleanSender =
+    senderName && !senderName.startsWith("+") && senderName !== "Contact" && senderName !== "WhatsApp Client"
+      ? senderName.split(" ")[0]
+      : "";
 
   const nowTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const nowDate = new Date().toLocaleDateString("en-US", {
@@ -58,124 +141,190 @@ function generateIntelligentConversationalAnswer(
     day: "numeric",
   });
 
-  // 1. Greetings (Hi, Hello, Salam, Namaskar, Good morning)
-  if (
-    /^(hi|hello|hey|hlw|hlo|salam|assalamu|as-salamu|namaskar|namaste|pranam|good morning|good afternoon|good evening|oi|bro|ভাই|হ্যালো|হাই|সালাম|আসসালামু|নমস্কার|नमस्ते|प्रणाम|हेलो|हाय)\b/i.test(
-      lower
-    ) &&
-    text.length < 35
-  ) {
-    if (isBengaliScript || isBanglish) {
-      return `হ্যালো${senderName ? ` ${senderName}` : ""}! আমি MS Agent। আশা করি আপনি ভালো আছেন। বলুন, আমি আপনাকে কীভাবে সাহায্য করতে পারি?`;
+  // 0. Math / Calculation evaluator (e.g. "25 * 40", "150 + 350 koto?")
+  const mathMatch = text.match(/(\d+(?:\.\d+)?)\s*([+\-*/x×÷])\s*(\d+(?:\.\d+)?)/);
+  if (mathMatch) {
+    const a = parseFloat(mathMatch[1]);
+    const op = mathMatch[2];
+    const b = parseFloat(mathMatch[3]);
+    let resVal: number | null = null;
+    if (op === "+") resVal = a + b;
+    else if (op === "-") resVal = a - b;
+    else if (op === "*" || op === "x" || op === "×") resVal = a * b;
+    else if ((op === "/" || op === "÷") && b !== 0) resVal = Number((a / b).toFixed(4));
+
+    if (resVal !== null) {
+      if (langMode === "bn") return `হিসাব অনুযায়ী ${a} ${op} ${b} = ${resVal}।`;
+      if (langMode === "hi") return `गणना के अनुसार ${a} ${op} ${b} = ${resVal} है।`;
+      return `The answer to ${a} ${op} ${b} is ${resVal}.`;
     }
-    if (isHindiScript || isHinglish) {
-      return `नमस्ते${senderName ? ` ${senderName}` : ""}! मैं MS Agent हूँ। आशा है आप अच्छे होंगे। बताइए, मैं आपकी क्या मदद कर सकता हूँ?`;
-    }
-    return `Hello${senderName ? ` ${senderName}` : ""}! This is MS Agent. Hope you are doing great. How can I help you today?`;
   }
 
-  // 2. "How are you?" / "Kemon achen?" / "Kaise ho?"
-  if (
-    /(how are you|how r u|how's it going|kemon acho|kemon achen|kmn acho|kmn achen|কেমন আছো|কেমন আছেন|কি অবস্থা|ki obostha|kaise ho|kaisa hai|kaise hain|कैसे हो|कैसे हैं|क्या हाल)/i.test(
-      lower
-    )
-  ) {
-    if (isBengaliScript || isBanglish) {
-      return `আমি খুব ভালো আছি, ধন্যবাদ! আপনি কেমন আছেন? আপনার কোনো কাজ বা মেসেজ থাকলে আমাকে বলতে পারেন।`;
+  // 1. Islamic Salam / Greetings
+  if (/(salam|assalamu|as-salamu|সালাম|আসসালামু|सलाम|अस्सलामु)/i.test(lower)) {
+    if (langMode === "bn") {
+      return `ওয়ালাইকুম আসসালাম${cleanSender ? ` ${cleanSender}` : ""}! আশা করি আপনি ভালো আছেন। বলুন, আপনাকে কীভাবে সাহায্য করতে পারি?`;
     }
-    if (isHindiScript || isHinglish) {
-      return `मैं बिल्कुल ठीक हूँ, धन्यवाद! आप कैसे हैं? बताइए आज मैं आपके लिए क्या कर सकता हूँ?`;
+    if (langMode === "hi") {
+      return `वालेकुम अस्सलाम${cleanSender ? ` ${cleanSender}` : ""}! आशा है आप खैरियत से होंगे। बताइए, मैं आपकी क्या मदद कर सकता हूँ?`;
     }
-    return `I'm doing great, thank you for asking! How are you doing today, and how can I assist you?`;
+    return `Wa Alaikum Assalam${cleanSender ? ` ${cleanSender}` : ""}! Hope you are doing well. How can I help you today?`;
   }
 
-  // 3. "Who are you?" / "What is your name?" / Identity
+  // 2. General Greetings (Hi, Hello, Hey, Good morning, Namaskar)
   if (
-    /(who are you|what is your name|your name|tumi ke|apni ke|tomar nam ki|তুমি কে|আপনি কে|তোমার নাম কি|aap kaun|tum kaun|tumhara naam|आप कौन|तुम्हारा नाम)/i.test(
-      lower
-    )
-  ) {
-    if (isBengaliScript || isBanglish) {
-      return `আমি MS Agent — আপনার পার্সোনাল এআই অ্যাসিস্ট্যান্ট। আমি স্বয়ংক্রিয়ভাবে হোয়াটসঅ্যাপ মেসেজের উত্তর দেওয়া, ইমেইল পাঠানো, তথ্য খোঁজা এবং প্রতিদিনের কাজের হিসাব রাখার দায়িত্ব পালন করি।`;
-    }
-    if (isHindiScript || isHinglish) {
-      return `मैं MS Agent हूँ — आपका पर्सनल एआई असिस्टेंट। मैं व्हाट्सएप संदेशों का उत्तर देने, ईमेल भेजने और आपके कार्यों को व्यवस्थित करने में मदद करता हूँ।`;
-    }
-    return `I am MS Agent, an autonomous Personal AI Executive Assistant. I handle WhatsApp conversations, emails, live web research, and daily scheduling.`;
-  }
-
-  // 4. Time / Date queries
-  if (
-    /(what time|current time|today's date|what date|koyta baje|somoy koto|ajke ki bar|কয়টা বাজে|সময় কত|আজকে কি বার|তারিখ কত|kitne baje|kya time|aaj kya tarikh|समय क्या|कितने बजे)/i.test(
-      lower
-    )
-  ) {
-    if (isBengaliScript || isBanglish) {
-      return `এখন সময় ${nowTime} এবং আজকের তারিখ হলো ${nowDate}।`;
-    }
-    if (isHindiScript || isHinglish) {
-      return `अभी समय ${nowTime} है और आज की तारीख ${nowDate} है।`;
-    }
-    return `The current time is ${nowTime}, and today is ${nowDate}.`;
-  }
-
-  // 5. Where are you / Busy / Call me / Meeting
-  if (
-    /(where are you|are you free|are you busy|call me|meeting|kothay acho|kothay apni|free acho|busy naki|কোথায় আছো|কোথায় আপনি|ফ্রি আছো|ব্যস্ত নাকি|কল দিও|মিটিং|kahan ho|free ho|busy ho|call karo|कहाँ हो|फ्री हो)/i.test(
-      lower
-    )
-  ) {
-    if (isBengaliScript || isBanglish) {
-      return `আমি আপনার মেসেজটি পেয়েছি। এই মুহূর্তে একটু ব্যস্ত থাকায় MS Agent আপনার মেসেজটি নোট করে রেখেছে। খুব শীঘ্রই আপনার সাথে সরাসরি যোগাযোগ করা হবে। জরুরি কিছু থাকলে এখানে লিখে রাখতে পারেন।`;
-    }
-    if (isHindiScript || isHinglish) {
-      return `आपका संदेश मिल गया है। अभी थोड़ा व्यस्त होने के कारण MS Agent ने आपका संदेश नोट कर लिया है। जल्द ही आपसे संपर्क किया जाएगा। कोई ज़रूरी बात हो तो यहाँ लिख दें।`;
-    }
-    return `Thank you for reaching out! I'm currently tied up for a moment, so MS Agent has prioritized your message and I will get back to you or call you very shortly. Feel free to drop any urgent details here.`;
-  }
-
-  // 6. Price / Rate / Service / Order / Business inquiries
-  if (
-    /(price|cost|rate|charge|service|order|payment|invoice|dam koto|koto taka|koto porbe|দাম কত|কত টাকা|চার্জ কত|সার্ভিস|অর্ডার|পেমেন্ট|kitna paisa|kya rate|price kya|कीमत क्या|कितने का)/i.test(
-      lower
-    )
-  ) {
-    if (isBengaliScript || isBanglish) {
-      return `আপনার আগ্রহের জন্য ধন্যবাদ! আপনার প্রয়োজনীয় সার্ভিস বা প্রোডাক্টের বিস্তারিত একটু লিখে জানান, আমি সবচেয়ে সেরা রেট ও বিস্তারিত তথ্য পাঠিয়ে দিচ্ছি।`;
-    }
-    if (isHindiScript || isHinglish) {
-      return `आपकी रुचि के लिए धन्यवाद! कृपया अपनी आवश्यकता का थोड़ा विवरण साझा करें ताकि मैं आपको सही कीमत और पूरी जानकारी भेज सकूँ।`;
-    }
-    return `Thank you for your inquiry! Could you please share a few quick details about your exact requirement? I will review it and send over the pricing and details right away.`;
-  }
-
-  // 7. Thank you / Ok / Bye
-  if (
-    /\b(thanks|thank you|thx|ok|okay|alright|good|great|bye|dhonnobad|accha|thik ache|ধন্যবাদ|থ্যাংকস|আচ্ছা|ঠিক আছে|शुक्रिया|धन्यवाद|ठीक है|अच्छा)\b/i.test(
+    /^(hi+|hello+|hey+|hlw|hlo|yo|oi|namaskar|namaste|pranam|good morning|good afternoon|good evening|good night|gm|gn|হ্যালো|হাই|নমস্কার|শুভ সকাল|শুভ সন্ধ্যা|नमस्ते|प्रणाम|हेलो|हाय)\b/i.test(
       lower
     ) &&
     text.length < 40
   ) {
-    if (isBengaliScript || isBanglish) {
-      return `আপনাকেও অনেক ধন্যবাদ! আর কোনো প্রয়োজন হলে যেকোনো সময় মেসেজ দেবেন।`;
+    if (langMode === "bn") {
+      return `হ্যালো${cleanSender ? ` ${cleanSender}` : ""}! আপনি কেমন আছেন? বলুন, কী বিষয়ে জানতে চান বা আমি আপনাকে কীভাবে সাহায্য করতে পারি?`;
     }
-    if (isHindiScript || isHinglish) {
-      return `आपका बहुत-बहुत धन्यवाद! यदि किसी और चीज़ की आवश्यकता हो तो कभी भी संदेश भेजें।`;
+    if (langMode === "hi") {
+      return `नमस्ते${cleanSender ? ` ${cleanSender}` : ""}! आप कैसे हैं? बताइए, आज मैं आपकी किस प्रकार सहायता कर सकता हूँ?`;
     }
-    return `You're most welcome! Let me know anytime if you need anything else.`;
+    return `Hello${cleanSender ? ` ${cleanSender}` : ""}! How are you doing today? Let me know how I can help you.`;
   }
 
-  // 8. General Questions or Custom Messages
-  if (isBengaliScript || isBanglish) {
-    return `হ্যালো${senderName ? ` ${senderName}` : ""}, আপনার মেসেজটির জন্য ধন্যবাদ। আমি আপনার বিষয়টি দেখেছি এবং গুরুত্বের সাথে নোট করে রেখেছি। খুব শীঘ্রই আপনাকে বিস্তারিত আপডেট জানাচ্ছি।`;
+  // 3. "How are you?" / "Kemon achen?" / "Ki khobor?" / "Kaise ho?"
+  if (
+    /(how are you|how r u|how are u|how's it going|what's up|sup|kemon acho|kemon achen|kmn acho|kmn achen|ki khobor|ki khbr|ki obostha|bhalo acho|valo acho|কেমন আছো|কেমন আছেন|কি খবর|কী খবর|কি অবস্থা|ভালো আছো|kaise ho|kaisa hai|kaise hain|kya haal|कैसे हो|कैसे हैं|क्या हाल)/i.test(
+      lower
+    )
+  ) {
+    if (langMode === "bn") {
+      return `আলহামদুলিল্লাহ, আমি খুব ভালো আছি! আপনি কেমন আছেন এবং আপনার দিন কেমন কাটছে?`;
+    }
+    if (langMode === "hi") {
+      return `मैं बहुत बढ़िया हूँ, धन्यवाद! आप कैसे हैं और आपका काम कैसा चल रहा है?`;
+    }
+    return `I'm doing great, thank you for asking! How are you doing today?`;
   }
-  if (isHindiScript || isHinglish) {
-    return `नमस्ते${senderName ? ` ${senderName}` : ""}, आपके संदेश के लिए धन्यवाद। मैंने आपकी बात नोट कर ली है और जल्द ही आपको पूरी जानकारी के साथ जवाब देता हूँ।`;
+
+  // 4. "What are you doing?" / "Ki korcho?" / "Kya kar rahe ho?"
+  if (
+    /(what are you doing|what r u doing|ki korcho|ki korchen|ki koro|ki koren|কী করছো|কি করছো|কী করছেন|কি করছেন|kya kar rahe|kya kr rhe|क्या कर रहे)/i.test(
+      lower
+    )
+  ) {
+    if (langMode === "bn") {
+      return `আমি এখন আপনার মেসেজ ও কাজগুলো গোছানোর দায়িত্বে আছি। আপনার কোনো প্রশ্ন বা কাজ থাকলে আমাকে বলতে পারেন!`;
+    }
+    if (langMode === "hi") {
+      return `मैं अभी आपके संदेशों और कार्यों की देखरेख कर रहा हूँ। बताइए, मैं आपके लिए क्या कर सकता हूँ?`;
+    }
+    return `I'm right here assisting with messages, research, and scheduling. What can I help you with right now?`;
   }
-  return `Hi${senderName ? ` ${senderName}` : ""}, thank you for your message! I have reviewed your note and will get back to you with a complete update shortly.`;
+
+  // 5. "Who are you?" / "What is your name?" / Identity
+  if (
+    /(who are you|what is your name|your name|tumi ke|apni ke|tomar nam ki|apnar nam ki|তুমি কে|আপনি কে|তোমার নাম কি|আপনার নাম কি|aap kaun|tum kaun|tumhara naam|आप कौन|तुम्हारा नाम)/i.test(
+      lower
+    )
+  ) {
+    if (langMode === "bn") {
+      return `আমি MS Agent — আপনার পার্সোনাল এআই অ্যাসিস্ট্যান্ট। আমি আপনার হয়ে মেসেজের উত্তর দেওয়া, ইমেইল পাঠানো, যেকোনো তথ্যের উত্তর খোঁজা এবং প্রতিদিনের কাজের হিসাব রাখি।`;
+    }
+    if (langMode === "hi") {
+      return `मैं MS Agent हूँ — आपका पर्सनल एआई असिस्टेंट। मैं आपके संदेशों का उत्तर देने, जानकारी खोजने और कार्यों को व्यवस्थित करने में मदद करता हूँ।`;
+    }
+    return `I am MS Agent, your Personal AI Assistant. I can answer questions, reply to WhatsApp messages, send emails, and organize your schedule.`;
+  }
+
+  // 6. Time / Date queries
+  if (
+    /(what time|current time|today's date|what date|koyta baje|somoy koto|ajke ki bar|ajker tarikh|কয়টা বাজে|সময় কত|আজকে কি বার|তারিখ কত|kitne baje|kya time|aaj kya tarikh|समय क्या|कितने बजे)/i.test(
+      lower
+    )
+  ) {
+    if (langMode === "bn") {
+      return `এখন সময় ${nowTime} এবং আজ হলো ${nowDate}।`;
+    }
+    if (langMode === "hi") {
+      return `अभी समय ${nowTime} है और आज की तारीख ${nowDate} है।`;
+    }
+    return `It is currently ${nowTime} on ${nowDate}.`;
+  }
+
+  // 7. Where are you / Are you free / Call me / Meeting
+  if (
+    /(where are you|are you free|are you busy|call me|can we talk|kothay acho|kothay apni|free acho|busy naki|kotha bola jabe|কোথায় আছো|কোথায় আপনি|ফ্রি আছো|ব্যস্ত নাকি|কল দিও|কথা বলা যাবে|kahan ho|free ho|busy ho|call karo|कहाँ हो|फ्री हो)/i.test(
+      lower
+    )
+  ) {
+    if (langMode === "bn") {
+      return `এই মুহূর্তে একটু কাজে ব্যস্ত আছি, তবে আপনার মেসেজটি আমি দেখছি। জরুরি কিছু থাকলে এখানে লিখে বলুন, আমি সাথে সাথে উত্তর দিচ্ছি অথবা একটু পরেই আপনাকে কল করছি।`;
+    }
+    if (langMode === "hi") {
+      return `अभी थोड़ा काम में व्यस्त हूँ, लेकिन आपका संदेश मिल गया है। कोई ज़रूरी बात हो तो यहाँ लिखिए, मैं तुरंत जवाब दूँगा या थोड़ी देर में कॉल करूँगा।`;
+    }
+    return `I'm slightly tied up at the moment, but you can tell me what you need right here and I'll help immediately or call you back shortly!`;
+  }
+
+  // 8. Price / Rate / Service / Order / Business inquiries
+  if (
+    /(price|cost|rate|charge|service|order|payment|delivery|dam koto|koto taka|koto porbe|দাম কত|কত টাকা|চার্জ কত|সার্ভিস|অর্ডার|ডেলিভারি|kitna paisa|kya rate|price kya|कीमत क्या|कितने का)/i.test(
+      lower
+    )
+  ) {
+    if (langMode === "bn") {
+      return `আপনি কোন সার্ভিস বা প্রোডাক্টটির দাম জানতে চাচ্ছেন? একটু নাম বা বিস্তারিত লিখে জানান, আমি এখনই সঠিক দাম ও বিস্তারিত জানাচ্ছি।`;
+    }
+    if (langMode === "hi") {
+      return `आप किस सर्विस या प्रोडक्ट की कीमत जानना चाहते हैं? कृपया उसका नाम लिखें, मैं अभी पूरी जानकारी साझा करता हूँ।`;
+    }
+    return `Which specific product or service would you like pricing for? Please share the name or details and I'll give you the exact information right away.`;
+  }
+
+  // 9. Help / Support requests
+  if (
+    /(help me|need help|can you help|ektu help|sahajjo|সাহায্য|হেল্প|madad|मदद)/i.test(
+      lower
+    )
+  ) {
+    if (langMode === "bn") {
+      return `অবশ্যই! বলুন আপনার কী সাহায্য প্রয়োজন? আমি যেকোনো তথ্যের উত্তর দিতে বা আপনার কাজ করে দিতে প্রস্তুত।`;
+    }
+    if (langMode === "hi") {
+      return `बिल्कुल! बताइए आपको क्या मदद चाहिए? मैं आपकी पूरी सहायता करने के लिए तैयार हूँ।`;
+    }
+    return `Of course! Tell me what you need help with and I'll take care of it right away.`;
+  }
+
+  // 10. Thank you / Ok / Yes / No / Acknowledgements
+  if (
+    /\b(thanks|thank you|thx|ty|ok|okay|k|kk|alright|good|great|nice|fine|hmm|hm|bye|dhonnobad|accha|achha|thik ache|hae|ha|na|ধন্যবাদ|থ্যাংকস|আচ্ছা|ঠিক আছে|হ্যাঁ|না|ওকে|शुक्रिया|धन्यवाद|ठीक है|अच्छा|हाँ|नहीं)\b/i.test(
+      lower
+    ) &&
+    text.length < 40
+  ) {
+    if (langMode === "bn") {
+      return `ঠিক আছে${cleanSender ? ` ${cleanSender}` : ""}! আর কোনো বিষয় জানার থাকলে বা কোনো প্রয়োজন হলে নির্দ্বিধায় বলুন।`;
+    }
+    if (langMode === "hi") {
+      return `ठीक है${cleanSender ? ` ${cleanSender}` : ""}! अगर कुछ और पूछना हो या किसी मदद की ज़रूरत हो तो बेझिझक बताइए।`;
+    }
+    return `Sounds good${cleanSender ? `, ${cleanSender}` : ""}! Let me know if there is anything else you'd like to ask or do.`;
+  }
+
+  // 11. Try Live Web Knowledge Lookup for any factual question or topic!
+  const knowledgeAnswer = await fetchLiveKnowledgeAnswer(text, langMode);
+  if (knowledgeAnswer) {
+    return knowledgeAnswer;
+  }
+
+  // 12. Contextual, Direct Conversational Reply (Never send a robotic "I have reviewed your note" line)
+  if (langMode === "bn") {
+    return `আপনি লিখেছেন: "${text}" — এই বিষয়ে আপনার কি নির্দিষ্ট কোনো তথ্য বা সহযোগিতা প্রয়োজন? একটু বিস্তারিত বললে আমি এখনই সঠিক সমাধান বা উত্তর দিয়ে দিচ্ছি।`;
+  }
+  if (langMode === "hi") {
+    return `आपने पूछा है: "${text}" — क्या आप इसके बारे में कोई विशेष जानकारी चाहते हैं? कृपया थोड़ा स्पष्ट बताएं ताकि मैं तुरंत सही उत्तर दे सकूँ।`;
+  }
+  return `Regarding "${text}" — could you share a little more detail on what you'd like to know or do? I'm here and ready to answer right away.`;
 }
 
-// Resilient Gemini content generator with exponential backoff and multi-model fallback
+// Resilient Gemini content generator with fast per-model timeout so hung models never block replies
 async function generateWithFallback(params: {
   models: string[];
   contents: any;
@@ -187,21 +336,27 @@ async function generateWithFallback(params: {
   const ai = getGeminiClient();
   let lastError: any = null;
   for (const modelName of params.models) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        return await ai.models.generateContent({
+    try {
+      const result = await Promise.race([
+        ai.models.generateContent({
           model: modelName,
           contents: params.contents,
           config: params.config,
-        });
-      } catch (err: any) {
-        lastError = err;
-        if (isRateLimitOrQuotaError(err)) {
-          await sleep(400 * (attempt + 1));
-          continue;
-        }
-        break;
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`Model ${modelName} timed out after 10000ms`)),
+            10000
+          )
+        ),
+      ]);
+      return result;
+    } catch (err: any) {
+      lastError = err;
+      if (isRateLimitOrQuotaError(err)) {
+        await sleep(250);
       }
+      continue;
     }
   }
   throw lastError;
@@ -229,28 +384,28 @@ async function generateSmartWhatsAppReply(
       ? `Recent chat history with ${contactName}:\n${historyContext}\n\nNew incoming WhatsApp message from ${contactName}: "${incomingMessage}"`
       : `New incoming WhatsApp message from ${contactName}: "${incomingMessage}"`;
 
+    // Put the fastest working models (gemini-flash-lite-latest & gemini-3.1-flash-lite) FIRST so WhatsApp gets real AI answers in ~0.8s!
     const response = await generateWithFallback({
       models: [
-        "gemini-3.8-flash",
+        "gemini-flash-lite-latest",
         "gemini-3.1-flash-lite",
-        "gemini-2.5-flash",
-        "gemini-2.0-flash",
+        "gemini-3.8-flash",
         "gemini-flash-latest",
       ],
       contents: promptText,
       config: {
-        systemInstruction: `You are replying directly on WhatsApp on behalf of the user as their intelligent Personal Assistant ("MS Agent").
-CRITICAL RULES FOR PROPER REPLIES:
-1. Directly answer what the sender is asking or saying!
-   - If they say "Hi / Hello / Salam / কেমন আছেন / Kemon acho", greet them warmly and ask how you can help.
-   - If they ask a question (general knowledge, advice, calculation, timing, status), answer the question directly, accurately, and helpfully.
-   - If they ask for the owner personally (e.g. "Where are you?", "Call me", "Meeting kokhon?"), politely let them know you've noted their message and will update/call them shortly.
-2. NEVER repeat or quote their message back in parentheses (never say: Thank you for your message "xyz"). Talk like a real, smart, polite human assistant.
+        systemInstruction: `You are "MS Agent", an intelligent, warm, human-like Personal AI Assistant replying on WhatsApp.
+CRITICAL RULES FOR ANSWERING MESSAGES:
+1. ALWAYS give a direct, real answer to the user's message or question!
+   - If they ask a question (e.g., general knowledge, tech, business, advice, meanings, news, calculations, daily life), ANSWER IT directly and accurately.
+   - If they send a greeting or casual chat ("Hi", "Kemon acho?", "Ki khobor?", "Ki korcho?", "Kaise ho?"), reply naturally like a friendly, smart assistant.
+   - If they ask for the account owner ("Where are you?", "Call me", "Free acho?"), reply politely that you've notified them and can also help right now.
+2. FORBIDDEN PHRASES: NEVER say "Thank you for your message! I have reviewed your note and will get back to you with a complete update shortly." Always give a genuine, relevant answer to what they wrote!
 3. LANGUAGE MIRRORING:
-   - If they write in English -> Reply in natural English.
-   - If they write in Bengali (বাংলা) or Banglish (e.g. "kemon achen", "ki khobor") -> Reply in natural Bengali (বাংলা লিপিতে).
-   - If they write in Hindi (हिन्दी) or Hinglish (e.g. "kaise ho", "kya haal hai") -> Reply in natural Hindi (देवनागरी लिपि में).
-4. Keep the reply concise (1 to 3 sentences), warm, and ready to send on WhatsApp. Return ONLY the reply text.`,
+   - English input -> Natural English reply.
+   - Bengali (বাংলা) or Banglish (e.g. "kemon achen", "ki khobor", "dam koto") -> Natural Bengali (বাংলা লিপিতে) reply.
+   - Hindi (हिन्दी) or Hinglish (e.g. "kaise ho", "kya haal hai") -> Natural Hindi (देवनागरी लिपि में) reply.
+4. Keep the reply concise (1 to 4 sentences) and natural for WhatsApp. Return ONLY the reply text.`,
       },
     });
 
@@ -265,7 +420,10 @@ CRITICAL RULES FOR PROPER REPLIES:
     console.warn("WhatsApp AI reply fallback activated:", err);
   }
 
-  const smartFallback = generateIntelligentConversationalAnswer(incomingMessage, contactName);
+  const smartFallback = await generateIntelligentConversationalAnswer(
+    incomingMessage,
+    contactName
+  );
   prevTurns.push({ role: "user", text: incomingMessage });
   prevTurns.push({ role: "model", text: smartFallback });
   waChatMemory.set(memoryKey, prevTurns.slice(-8));
@@ -755,7 +913,10 @@ async function buildLocalAutonomousFallback(message: string, contextState: any =
       }
     }
 
-    const replyMessage = generateIntelligentConversationalAnswer(message, contactName);
+    const replyMessage = await generateIntelligentConversationalAnswer(
+      message,
+      contactName
+    );
 
     const waResult = await dispatchDirectWhatsAppMessage(
       phoneNumber,
@@ -824,11 +985,18 @@ async function buildLocalAutonomousFallback(message: string, contextState: any =
       }
     );
 
-    replyText = isBengali
-      ? `আপনার "${message}" বিষয়ে সার্চ ফলাফল প্রস্তুত করা হয়েছে এবং নিচে যাচাইকৃত ওয়েব লিংক যুক্ত করা হয়েছে।`
-      : isHindi
-      ? `आपके "${message}" विषय पर खोज परिणाम तैयार कर लिए गए हैं और सत्यापित वेब लिंक नीचे दिए गए हैं।`
-      : `I have searched for "${message}" and attached the verified live web links below for immediate access.`;
+    const wikiSummary = await fetchLiveKnowledgeAnswer(
+      message,
+      isBengali ? "bn" : isHindi ? "hi" : "en"
+    );
+
+    replyText =
+      wikiSummary ||
+      (isBengali
+        ? `আপনার "${message}" বিষয়ে সার্চ ফলাফল প্রস্তুত করা হয়েছে এবং নিচে যাচাইকৃত ওয়েব লিংক যুক্ত করা হয়েছে।`
+        : isHindi
+        ? `आपके "${message}" विषय पर खोज परिणाम तैयार कर लिए गए हैं और सत्यापित वेब लिंक नीचे दिए गए हैं।`
+        : `I have searched for "${message}" and attached the verified live web links below for immediate access.`);
   } else if (wantsExplicitTask) {
     executedActions.push({
       id: `act_${Date.now()}_tsk`,
@@ -848,7 +1016,7 @@ async function buildLocalAutonomousFallback(message: string, contextState: any =
       : `I have automatically added this task to your systematic schedule: "${message}".`;
   } else {
     // Natural conversational answer for greetings, questions, or general chat!
-    replyText = generateIntelligentConversationalAnswer(message);
+    replyText = await generateIntelligentConversationalAnswer(message);
   }
 
   return {
@@ -1136,7 +1304,12 @@ apiApp.post("/api/transcribe", async (req, res) => {
     }
 
     const response = await generateWithFallback({
-      models: ["gemini-3.5-transcribe", "gemini-3.1-flash-lite", "gemini-flash-latest"],
+      models: [
+        "gemini-3.5-transcribe",
+        "gemini-flash-lite-latest",
+        "gemini-3.1-flash-lite",
+        "gemini-flash-latest",
+      ],
       contents: {
         parts: [
           {
@@ -1205,10 +1378,9 @@ CRITICAL MULTILINGUAL LANGUAGE MIRRORING RULE (English, Bengali, Hindi):
 
     const response = await generateWithFallback({
       models: [
-        "gemini-3.8-flash",
+        "gemini-flash-lite-latest",
         "gemini-3.1-flash-lite",
-        "gemini-2.5-flash",
-        "gemini-2.0-flash",
+        "gemini-3.8-flash",
         "gemini-flash-latest",
       ],
       contents,
@@ -1344,8 +1516,12 @@ apiApp.post("/api/whatsapp/auto-reply", async (req, res) => {
       ...dispatchInfo,
     });
   } catch (error: any) {
+    const fallbackReply = await generateIntelligentConversationalAnswer(
+      incomingMessage,
+      contactName || ""
+    );
     res.status(200).json({
-      aiReply: `Hi ${contactName || "there"}, thank you for your message. I have received it and will get back to you shortly.`,
+      aiReply: fallbackReply,
       deliveredDirect: false,
     });
   }
