@@ -64,7 +64,7 @@ export default function App() {
     pairingCode: null,
     connectedUser: null,
     autoReplyEnabled: true,
-    replyToSelfMessages: false,
+    replyToSelfMessages: true,
     lastError: null,
     liveMessages: [],
   });

@@ -7,9 +7,9 @@ export interface EmailItem {
   to: string;
   subject: string;
   body: string;
-  priority: "Normal" | "High";
   status: "Drafted by AI" | "Dispatched" | "Incoming Needs Reply";
   timestamp: string;
+  priority: "Normal" | "High";
 }
 
 export interface WhatsAppItem {
@@ -18,7 +18,7 @@ export interface WhatsAppItem {
   phoneNumber: string;
   incomingMessage: string;
   aiReply: string;
-  status: "Auto-Replied" | "Ready to Send" | "Pending AI Answer";
+  status: "Ready to Send" | "Auto-Replied" | "Pending AI Answer";
   timestamp: string;
   isLiveDeviceMessage?: boolean;
 }
@@ -36,6 +36,7 @@ export interface WhatsAppConnectionStatus {
   replyToSelfMessages: boolean;
   lastError: string | null;
   liveMessages: WhatsAppItem[];
+  cloudWebhookConfigured?: boolean;
 }
 
 export interface SearchSource {
@@ -73,7 +74,7 @@ export interface ConversationMessage {
   text: string;
   timestamp: string;
   isVoice?: boolean;
+  audioBase64?: string;
   executedActions?: ExecutedAction[];
   searchSources?: SearchSource[];
-  audioBase64?: string;
 }

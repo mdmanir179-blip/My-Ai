@@ -30,6 +30,151 @@ function isRateLimitOrQuotaError(err: any): boolean {
   );
 }
 
+// Intelligent multilingual conversational engine for natural replies even when Gemini API quota is temporarily exhausted
+function generateIntelligentConversationalAnswer(
+  rawText: string,
+  senderName = ""
+): string {
+  const text = String(rawText || "").trim();
+  const lower = text.toLowerCase();
+  const isBengaliScript = /[\u0980-\u09FF]/.test(text);
+  const isHindiScript = /[\u0900-\u097F]/.test(text);
+
+  // Detect Banglish (Romanized Bengali)
+  const banglishRegex =
+    /\b(kemon|achhen|achen|acho|kothay|ki korcho|ki koren|bhalo|valo|dhonnobad|shuvo|kobe|kokhon|keno|tumi|apni|amake|amar|ekta|kore|daw|dao|bolen|bolo|bhai|dada|apu|khabar|asta|ashbo|jabo|parbo|hobe|lagbe|dorkar|somoy|koto|taka|dam)\b/i;
+  const isBanglish = !isBengaliScript && !isHindiScript && banglishRegex.test(lower);
+
+  // Detect Hinglish (Romanized Hindi)
+  const hinglishRegex =
+    /\b(kaise|kaisa|kaisi|kahan|kya|kar rahe|thik|theek|accha|acha|shukriya|dhanyawad|kab|kyu|kyun|tum|aap|mujhe|mera|meri|ek|kardo|karo|batao|bataiye|bhai|kitna|paisa|waqt|samay|milega|hoga)\b/i;
+  const isHinglish = !isBengaliScript && !isHindiScript && !isBanglish && hinglishRegex.test(lower);
+
+  const nowTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const nowDate = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  // 1. Greetings (Hi, Hello, Salam, Namaskar, Good morning)
+  if (
+    /^(hi|hello|hey|hlw|hlo|salam|assalamu|as-salamu|namaskar|namaste|pranam|good morning|good afternoon|good evening|oi|bro|ভাই|হ্যালো|হাই|সালাম|আসসালামু|নমস্কার|नमस्ते|प्रणाम|हेलो|हाय)\b/i.test(
+      lower
+    ) &&
+    text.length < 35
+  ) {
+    if (isBengaliScript || isBanglish) {
+      return `হ্যালো${senderName ? ` ${senderName}` : ""}! আমি MS Agent। আশা করি আপনি ভালো আছেন। বলুন, আমি আপনাকে কীভাবে সাহায্য করতে পারি?`;
+    }
+    if (isHindiScript || isHinglish) {
+      return `नमस्ते${senderName ? ` ${senderName}` : ""}! मैं MS Agent हूँ। आशा है आप अच्छे होंगे। बताइए, मैं आपकी क्या मदद कर सकता हूँ?`;
+    }
+    return `Hello${senderName ? ` ${senderName}` : ""}! This is MS Agent. Hope you are doing great. How can I help you today?`;
+  }
+
+  // 2. "How are you?" / "Kemon achen?" / "Kaise ho?"
+  if (
+    /(how are you|how r u|how's it going|kemon acho|kemon achen|kmn acho|kmn achen|কেমন আছো|কেমন আছেন|কি অবস্থা|ki obostha|kaise ho|kaisa hai|kaise hain|कैसे हो|कैसे हैं|क्या हाल)/i.test(
+      lower
+    )
+  ) {
+    if (isBengaliScript || isBanglish) {
+      return `আমি খুব ভালো আছি, ধন্যবাদ! আপনি কেমন আছেন? আপনার কোনো কাজ বা মেসেজ থাকলে আমাকে বলতে পারেন।`;
+    }
+    if (isHindiScript || isHinglish) {
+      return `मैं बिल्कुल ठीक हूँ, धन्यवाद! आप कैसे हैं? बताइए आज मैं आपके लिए क्या कर सकता हूँ?`;
+    }
+    return `I'm doing great, thank you for asking! How are you doing today, and how can I assist you?`;
+  }
+
+  // 3. "Who are you?" / "What is your name?" / Identity
+  if (
+    /(who are you|what is your name|your name|tumi ke|apni ke|tomar nam ki|তুমি কে|আপনি কে|তোমার নাম কি|aap kaun|tum kaun|tumhara naam|आप कौन|तुम्हारा नाम)/i.test(
+      lower
+    )
+  ) {
+    if (isBengaliScript || isBanglish) {
+      return `আমি MS Agent — আপনার পার্সোনাল এআই অ্যাসিস্ট্যান্ট। আমি স্বয়ংক্রিয়ভাবে হোয়াটসঅ্যাপ মেসেজের উত্তর দেওয়া, ইমেইল পাঠানো, তথ্য খোঁজা এবং প্রতিদিনের কাজের হিসাব রাখার দায়িত্ব পালন করি।`;
+    }
+    if (isHindiScript || isHinglish) {
+      return `मैं MS Agent हूँ — आपका पर्सनल एआई असिस्टेंट। मैं व्हाट्सएप संदेशों का उत्तर देने, ईमेल भेजने और आपके कार्यों को व्यवस्थित करने में मदद करता हूँ।`;
+    }
+    return `I am MS Agent, an autonomous Personal AI Executive Assistant. I handle WhatsApp conversations, emails, live web research, and daily scheduling.`;
+  }
+
+  // 4. Time / Date queries
+  if (
+    /(what time|current time|today's date|what date|koyta baje|somoy koto|ajke ki bar|কয়টা বাজে|সময় কত|আজকে কি বার|তারিখ কত|kitne baje|kya time|aaj kya tarikh|समय क्या|कितने बजे)/i.test(
+      lower
+    )
+  ) {
+    if (isBengaliScript || isBanglish) {
+      return `এখন সময় ${nowTime} এবং আজকের তারিখ হলো ${nowDate}।`;
+    }
+    if (isHindiScript || isHinglish) {
+      return `अभी समय ${nowTime} है और आज की तारीख ${nowDate} है।`;
+    }
+    return `The current time is ${nowTime}, and today is ${nowDate}.`;
+  }
+
+  // 5. Where are you / Busy / Call me / Meeting
+  if (
+    /(where are you|are you free|are you busy|call me|meeting|kothay acho|kothay apni|free acho|busy naki|কোথায় আছো|কোথায় আপনি|ফ্রি আছো|ব্যস্ত নাকি|কল দিও|মিটিং|kahan ho|free ho|busy ho|call karo|कहाँ हो|फ्री हो)/i.test(
+      lower
+    )
+  ) {
+    if (isBengaliScript || isBanglish) {
+      return `আমি আপনার মেসেজটি পেয়েছি। এই মুহূর্তে একটু ব্যস্ত থাকায় MS Agent আপনার মেসেজটি নোট করে রেখেছে। খুব শীঘ্রই আপনার সাথে সরাসরি যোগাযোগ করা হবে। জরুরি কিছু থাকলে এখানে লিখে রাখতে পারেন।`;
+    }
+    if (isHindiScript || isHinglish) {
+      return `आपका संदेश मिल गया है। अभी थोड़ा व्यस्त होने के कारण MS Agent ने आपका संदेश नोट कर लिया है। जल्द ही आपसे संपर्क किया जाएगा। कोई ज़रूरी बात हो तो यहाँ लिख दें।`;
+    }
+    return `Thank you for reaching out! I'm currently tied up for a moment, so MS Agent has prioritized your message and I will get back to you or call you very shortly. Feel free to drop any urgent details here.`;
+  }
+
+  // 6. Price / Rate / Service / Order / Business inquiries
+  if (
+    /(price|cost|rate|charge|service|order|payment|invoice|dam koto|koto taka|koto porbe|দাম কত|কত টাকা|চার্জ কত|সার্ভিস|অর্ডার|পেমেন্ট|kitna paisa|kya rate|price kya|कीमत क्या|कितने का)/i.test(
+      lower
+    )
+  ) {
+    if (isBengaliScript || isBanglish) {
+      return `আপনার আগ্রহের জন্য ধন্যবাদ! আপনার প্রয়োজনীয় সার্ভিস বা প্রোডাক্টের বিস্তারিত একটু লিখে জানান, আমি সবচেয়ে সেরা রেট ও বিস্তারিত তথ্য পাঠিয়ে দিচ্ছি।`;
+    }
+    if (isHindiScript || isHinglish) {
+      return `आपकी रुचि के लिए धन्यवाद! कृपया अपनी आवश्यकता का थोड़ा विवरण साझा करें ताकि मैं आपको सही कीमत और पूरी जानकारी भेज सकूँ।`;
+    }
+    return `Thank you for your inquiry! Could you please share a few quick details about your exact requirement? I will review it and send over the pricing and details right away.`;
+  }
+
+  // 7. Thank you / Ok / Bye
+  if (
+    /\b(thanks|thank you|thx|ok|okay|alright|good|great|bye|dhonnobad|accha|thik ache|ধন্যবাদ|থ্যাংকস|আচ্ছা|ঠিক আছে|शुक्रिया|धन्यवाद|ठीक है|अच्छा)\b/i.test(
+      lower
+    ) &&
+    text.length < 40
+  ) {
+    if (isBengaliScript || isBanglish) {
+      return `আপনাকেও অনেক ধন্যবাদ! আর কোনো প্রয়োজন হলে যেকোনো সময় মেসেজ দেবেন।`;
+    }
+    if (isHindiScript || isHinglish) {
+      return `आपका बहुत-बहुत धन्यवाद! यदि किसी और चीज़ की आवश्यकता हो तो कभी भी संदेश भेजें।`;
+    }
+    return `You're most welcome! Let me know anytime if you need anything else.`;
+  }
+
+  // 8. General Questions or Custom Messages
+  if (isBengaliScript || isBanglish) {
+    return `হ্যালো${senderName ? ` ${senderName}` : ""}, আপনার মেসেজটির জন্য ধন্যবাদ। আমি আপনার বিষয়টি দেখেছি এবং গুরুত্বের সাথে নোট করে রেখেছি। খুব শীঘ্রই আপনাকে বিস্তারিত আপডেট জানাচ্ছি।`;
+  }
+  if (isHindiScript || isHinglish) {
+    return `नमस्ते${senderName ? ` ${senderName}` : ""}, आपके संदेश के लिए धन्यवाद। मैंने आपकी बात नोट कर ली है और जल्द ही आपको पूरी जानकारी के साथ जवाब देता हूँ।`;
+  }
+  return `Hi${senderName ? ` ${senderName}` : ""}, thank you for your message! I have reviewed your note and will get back to you with a complete update shortly.`;
+}
+
 // Resilient Gemini content generator with exponential backoff and multi-model fallback
 async function generateWithFallback(params: {
   models: string[];
@@ -52,7 +197,7 @@ async function generateWithFallback(params: {
       } catch (err: any) {
         lastError = err;
         if (isRateLimitOrQuotaError(err)) {
-          await sleep(600 * (attempt + 1));
+          await sleep(400 * (attempt + 1));
           continue;
         }
         break;
@@ -62,42 +207,69 @@ async function generateWithFallback(params: {
   throw lastError;
 }
 
-// Generate an intelligent, language-matched WhatsApp auto-reply (with zero-failure fallback)
+// Store short per-contact conversation history so WhatsApp replies are contextual and natural
+const waChatMemory = new Map<string, Array<{ role: "user" | "model"; text: string }>>();
+
+// Generate an intelligent, language-matched WhatsApp auto-reply
 async function generateSmartWhatsAppReply(
   contactName: string,
   phoneNumber: string,
   incomingMessage: string
 ): Promise<string> {
+  const memoryKey = phoneNumber || contactName || "default";
+  const prevTurns = waChatMemory.get(memoryKey) || [];
+
   try {
+    const historyContext = prevTurns
+      .slice(-4)
+      .map((t) => `${t.role === "user" ? contactName : "You"}: ${t.text}`)
+      .join("\n");
+
+    const promptText = historyContext
+      ? `Recent chat history with ${contactName}:\n${historyContext}\n\nNew incoming WhatsApp message from ${contactName}: "${incomingMessage}"`
+      : `New incoming WhatsApp message from ${contactName}: "${incomingMessage}"`;
+
     const response = await generateWithFallback({
-      models: ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],
-      contents: `Incoming WhatsApp message from ${contactName || "Contact"} (${phoneNumber || ""}): "${incomingMessage}"`,
+      models: [
+        "gemini-3.8-flash",
+        "gemini-3.1-flash-lite",
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-flash-latest",
+      ],
+      contents: promptText,
       config: {
-        systemInstruction: `You are "MS Agent", an autonomous Personal WhatsApp Executive Assistant replying directly on behalf of the user.
-Read the incoming WhatsApp message and write a natural, polite, helpful, direct reply.
-CRITICAL LANGUAGE MIRRORING RULE:
-- If the incoming message is in English, write the reply in clear English.
-- If the incoming message is in Bengali (বাংলা) or Banglish (Bengali words in English script), write the reply in natural Bengali (বাংলা লিপিতে) or matching friendly Banglish.
-- If the incoming message is in Hindi (हिन्दी) or Hinglish (Hindi words in English script), write the reply in natural Hindi (देवनागरी लिपि में).
-Return ONLY the exact reply text without quotes or extra explanation.`,
+        systemInstruction: `You are replying directly on WhatsApp on behalf of the user as their intelligent Personal Assistant ("MS Agent").
+CRITICAL RULES FOR PROPER REPLIES:
+1. Directly answer what the sender is asking or saying!
+   - If they say "Hi / Hello / Salam / কেমন আছেন / Kemon acho", greet them warmly and ask how you can help.
+   - If they ask a question (general knowledge, advice, calculation, timing, status), answer the question directly, accurately, and helpfully.
+   - If they ask for the owner personally (e.g. "Where are you?", "Call me", "Meeting kokhon?"), politely let them know you've noted their message and will update/call them shortly.
+2. NEVER repeat or quote their message back in parentheses (never say: Thank you for your message "xyz"). Talk like a real, smart, polite human assistant.
+3. LANGUAGE MIRRORING:
+   - If they write in English -> Reply in natural English.
+   - If they write in Bengali (বাংলা) or Banglish (e.g. "kemon achen", "ki khobor") -> Reply in natural Bengali (বাংলা লিপিতে).
+   - If they write in Hindi (हिन्दी) or Hinglish (e.g. "kaise ho", "kya haal hai") -> Reply in natural Hindi (देवनागरी लिपि में).
+4. Keep the reply concise (1 to 3 sentences), warm, and ready to send on WhatsApp. Return ONLY the reply text.`,
       },
     });
 
     const text = response.text?.trim();
-    if (text) return text;
+    if (text) {
+      prevTurns.push({ role: "user", text: incomingMessage });
+      prevTurns.push({ role: "model", text });
+      waChatMemory.set(memoryKey, prevTurns.slice(-8));
+      return text;
+    }
   } catch (err) {
     console.warn("WhatsApp AI reply fallback activated:", err);
   }
 
-  const isBengali = /[\u0980-\u09FF]/.test(incomingMessage);
-  const isHindi = /[\u0900-\u097F]/.test(incomingMessage);
-  if (isBengali) {
-    return `ধন্যবাদ ${contactName || ""}, আপনার মেসেজটি পেয়েছি ("${incomingMessage.slice(0, 40)}")। আমি বিষয়টি নোট করেছি এবং খুব শীঘ্রই জানাচ্ছি।`;
-  }
-  if (isHindi) {
-    return `धन्यवाद ${contactName || ""}, आपका संदेश मिल गया है ("${incomingMessage.slice(0, 40)}")। मैंने इसे नोट कर लिया है और जल्द ही आपको अपडेट देता हूँ।`;
-  }
-  return `Hi ${contactName || "there"}, thank you for your message regarding "${incomingMessage.slice(0, 40)}". I have noted this and will get back to you shortly.`;
+  const smartFallback = generateIntelligentConversationalAnswer(incomingMessage, contactName);
+  prevTurns.push({ role: "user", text: incomingMessage });
+  prevTurns.push({ role: "model", text: smartFallback });
+  waChatMemory.set(memoryKey, prevTurns.slice(-8));
+  return smartFallback;
 }
 
 // ============================================================================
@@ -133,7 +305,7 @@ const waRuntime: LiveWhatsAppState = {
   pairingCode: null,
   connectedUser: null,
   autoReplyEnabled: true,
-  replyToSelfMessages: false,
+  replyToSelfMessages: true,
   lastError: null,
   liveMessages: [],
 };
@@ -291,18 +463,20 @@ async function startRealWhatsAppConnection(forceReset = false) {
           setTimeout(() => {
             startRealWhatsAppConnection(false).catch(() => {});
           }, 400);
-        } else if (!process.env.VERCEL) {
-          waRuntime.state = "connecting";
-          if (reasonMsg) {
-            waRuntime.lastError = `Reconnecting (${reasonMsg})...`;
-          }
-          setTimeout(() => {
-            startRealWhatsAppConnection(false).catch(() => {});
-          }, 2000);
         } else {
-          waRuntime.state = "disconnected";
-          waRuntime.lastError =
-            "Note: Live QR WebSocket requires a persistent server (like AI Studio / Cloud Run). On Vercel Serverless, use Meta Cloud Webhook or run QR linking here.";
+          // Automatically reconnect on both persistent servers and warm Vercel containers when credentials exist
+          const hasSavedCreds = fs.existsSync(path.join(WA_AUTH_DIR, "creds.json"));
+          if (hasSavedCreds || !process.env.VERCEL) {
+            waRuntime.state = "connecting";
+            if (reasonMsg) {
+              waRuntime.lastError = `Reconnecting (${reasonMsg})...`;
+            }
+            setTimeout(() => {
+              startRealWhatsAppConnection(false).catch(() => {});
+            }, 1500);
+          } else {
+            waRuntime.state = "disconnected";
+          }
         }
       }
     });
@@ -310,11 +484,17 @@ async function startRealWhatsAppConnection(forceReset = false) {
     // Listen to real-time incoming WhatsApp messages and auto-reply via MS Agent
     sock.ev.on("messages.upsert", async (m: any) => {
       try {
-        if (m.type !== "notify") return;
+        if (m.type !== "notify" && m.type !== "append") return;
 
         for (const msg of m.messages || []) {
           const msgId = msg.key?.id;
           if (!msgId || processedMsgIds.has(msgId) || sentByAiMsgIds.has(msgId)) {
+            continue;
+          }
+
+          // Ignore old history sync messages older than 90 seconds
+          const msgTimestamp = Number(msg.messageTimestamp || 0);
+          if (msgTimestamp > 0 && Date.now() / 1000 - msgTimestamp > 90) {
             continue;
           }
 
@@ -332,11 +512,24 @@ async function startRealWhatsAppConnection(forceReset = false) {
             continue;
           }
 
+          // Unwrap ephemeral / disappearing / viewOnce wrappers used by modern WhatsApp clients
+          const rawMsg =
+            msg.message?.ephemeralMessage?.message ||
+            msg.message?.viewOnceMessage?.message ||
+            msg.message?.viewOnceMessageV2?.message ||
+            msg.message?.documentWithCaptionMessage?.message ||
+            msg.message;
+
+          if (!rawMsg) continue;
+
           const textContent =
-            msg.message?.conversation ||
-            msg.message?.extendedTextMessage?.text ||
-            msg.message?.imageMessage?.caption ||
-            msg.message?.videoMessage?.caption ||
+            rawMsg.conversation ||
+            rawMsg.extendedTextMessage?.text ||
+            rawMsg.imageMessage?.caption ||
+            rawMsg.videoMessage?.caption ||
+            rawMsg.buttonsResponseMessage?.selectedDisplayText ||
+            rawMsg.listResponseMessage?.title ||
+            rawMsg.templateButtonReplyMessage?.selectedDisplayText ||
             "";
 
           const incomingText = String(textContent || "").trim();
@@ -379,6 +572,7 @@ async function startRealWhatsAppConnection(forceReset = false) {
           const sentMsg = await sock.sendMessage(remoteJid, { text: aiReplyText });
           if (sentMsg?.key?.id) {
             sentByAiMsgIds.add(sentMsg.key.id);
+            processedMsgIds.add(sentMsg.key.id);
           }
 
           try {
@@ -450,8 +644,8 @@ async function dispatchDirectWhatsAppMessage(
     }
   }
 
-  const token = process.env.WHATSAPP_ACCESS_TOKEN;
-  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const token = customMetaAccessToken || process.env.WHATSAPP_ACCESS_TOKEN;
+  const phoneId = customMetaPhoneId || process.env.WHATSAPP_PHONE_NUMBER_ID;
   if (token && phoneId && cleanPhone.length >= 8) {
     try {
       const response = await fetch(
@@ -507,13 +701,14 @@ async function buildLocalAutonomousFallback(message: string, contextState: any =
     lower.includes("হোয়াটসঅ্যাপ") ||
     lower.includes("व्हाट्सएप") ||
     lower.includes("व्हाट्सऐप") ||
-    lower.includes("মেসেজ") ||
-    lower.includes("मैसेज") ||
-    lower.includes("sms");
+    lower.includes("মেসেজ পাঠাও") ||
+    lower.includes("मैसेज भेजो") ||
+    lower.includes("send a message") ||
+    lower.includes("send whatsapp");
 
   const wantsEmail =
     lower.includes("email") ||
-    lower.includes("mail") ||
+    lower.includes("send mail") ||
     lower.includes("ইমেইল") ||
     lower.includes("মেইল") ||
     lower.includes("ईमेल") ||
@@ -530,37 +725,37 @@ async function buildLocalAutonomousFallback(message: string, contextState: any =
     lower.includes("खबर") ||
     lower.includes("न्यूज़");
 
+  const wantsExplicitTask =
+    lower.includes("task") ||
+    lower.includes("note") ||
+    lower.includes("remind") ||
+    lower.includes("schedule") ||
+    lower.includes("নোট কর") ||
+    lower.includes("মনে করিয়ে") ||
+    lower.includes("টাস্ক") ||
+    lower.includes("नोट") ||
+    lower.includes("याद दिला");
+
   if (wantsWhatsApp) {
     let contactName = "WhatsApp Contact";
-    let phoneNumber = "+8801711002244";
+    let phoneNumber = "";
+
+    const phoneMatch = message.match(/\+?[0-9]{10,15}/);
+    if (phoneMatch) {
+      phoneNumber = phoneMatch[0].startsWith("+") ? phoneMatch[0] : `+${phoneMatch[0]}`;
+    }
 
     const knownContacts = contextState.recentWhatsApp || [];
     for (const c of knownContacts) {
       const firstToken = String(c.contact || "").split(" ")[0].toLowerCase();
       if (firstToken && lower.includes(firstToken)) {
         contactName = c.contact;
-        phoneNumber = c.phone || phoneNumber;
+        phoneNumber = phoneNumber || c.phone || "";
         break;
       }
     }
-    if (contactName === "WhatsApp Contact") {
-      if (lower.includes("farhana") || message.includes("ফারহানা")) {
-        contactName = "Farhana Islam (Team Lead)";
-        phoneNumber = "+8801819334455";
-      } else if (lower.includes("tanvir") || message.includes("তানভীর")) {
-        contactName = "Tanvir Hasan (Client)";
-        phoneNumber = "+8801711002244";
-      } else if (lower.includes("vikram") || message.includes("विक्रम")) {
-        contactName = "Vikram Sharma (Partner)";
-        phoneNumber = "+919820112233";
-      }
-    }
 
-    const replyMessage = isBengali
-      ? `হ্যালো, আপনার নির্দেশ অনুযায়ী আপডেট জানানো হচ্ছে: "${message}"। ধন্যবাদ!`
-      : isHindi
-      ? `नमस्ते, आपके निर्देश के अनुसार अपडेट भेजा जा रहा है: "${message}"। धन्यवाद!`
-      : `Hello, sharing a quick automatic update regarding: "${message}". Thank you!`;
+    const replyMessage = generateIntelligentConversationalAnswer(message, contactName);
 
     const waResult = await dispatchDirectWhatsAppMessage(
       phoneNumber,
@@ -581,17 +776,13 @@ async function buildLocalAutonomousFallback(message: string, contextState: any =
     });
 
     replyText = isBengali
-      ? `আমি স্বয়ংক্রিয়ভাবে হোয়াটসঅ্যাপে ${contactName}-কে আপনার মেসেজটি পাঠিয়ে দিয়েছি।`
+      ? `আমি স্বয়ংক্রিয়ভাবে হোয়াটসঅ্যাপে ${contactName}-কে আপনার মেসেজটি পাঠিয়ে দিয়েছি: "${replyMessage}"`
       : isHindi
-      ? `मैंने स्वचालित रूप से व्हाट्सएप पर ${contactName} को आपका संदेश भेज दिया है।`
-      : `I have automatically composed and sent your WhatsApp message to ${contactName}.`;
+      ? `मैंने स्वचालित रूप से व्हाट्सएप पर ${contactName} को आपका संदेश भेज दिया है: "${replyMessage}"`
+      : `I have automatically sent your WhatsApp message to ${contactName}: "${replyMessage}"`;
   } else if (wantsEmail) {
-    let to = "rahim.ahmed@dhakatech.com";
-    if (lower.includes("nusrat") || message.includes("নুসরাত")) {
-      to = "nusrat.jahan@creativeagency.bd";
-    } else if (lower.includes("billing") || lower.includes("finance")) {
-      to = "billing@cloudservices.io";
-    }
+    const emailMatch = message.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    const to = emailMatch ? emailMatch[0] : "recipient@example.com";
 
     const subject = isBengali
       ? "গুরুত্বপূর্ণ প্রজেক্ট ও মিটিং আপডেট"
@@ -600,10 +791,10 @@ async function buildLocalAutonomousFallback(message: string, contextState: any =
       : "Executive Action & Schedule Update";
 
     const body = isBengali
-      ? `প্রিয় মহোদয়,\n\nআপনার নির্দেশ অনুযায়ী বিস্তারিত বার্তা:\n${message}\n\nশুভেচ্ছান্তে,\nএক্সিকিউটিভ অফিস`
+      ? `প্রিয় মহোদয়,\n\nআপনার সাথে নিম্নোক্ত বিষয়ে যোগাযোগ করা হচ্ছে:\n${message}\n\nশুভেচ্ছান্তে,\nMS Agent`
       : isHindi
-      ? `प्रिय महोदय,\n\nआपके निर्देश के अनुसार विवरण:\n${message}\n\nसादर,\nएग्जीक्यूटिव ऑफिस`
-      : `Hello,\n\nPlease find the systematic update below:\n${message}\n\nBest regards,\nExecutive Office`;
+      ? `प्रिय महोदय,\n\nआपसे निम्नलिखित विषय में संपर्क किया जा रहा है:\n${message}\n\nसादर,\nMS Agent`
+      : `Hello,\n\nI am writing to share the following update:\n${message}\n\nBest regards,\nMS Agent`;
 
     executedActions.push({
       id: `act_${Date.now()}_em`,
@@ -638,7 +829,7 @@ async function buildLocalAutonomousFallback(message: string, contextState: any =
       : isHindi
       ? `आपके "${message}" विषय पर खोज परिणाम तैयार कर लिए गए हैं और सत्यापित वेब लिंक नीचे दिए गए हैं।`
       : `I have searched for "${message}" and attached the verified live web links below for immediate access.`;
-  } else {
+  } else if (wantsExplicitTask) {
     executedActions.push({
       id: `act_${Date.now()}_tsk`,
       toolName: "create_systematic_task",
@@ -651,10 +842,13 @@ async function buildLocalAutonomousFallback(message: string, contextState: any =
     });
 
     replyText = isBengali
-      ? `আমি আপনার কথাটি নোট করেছি এবং স্বয়ংক্রিয়ভাবে সিস্টেমেটিক তালিকায় সংরক্ষণ করেছি: "${message}"।`
+      ? `আমি আপনার কাজটি স্বয়ংক্রিয়ভাবে সিস্টেমেটিক তালিকায় সংরক্ষণ করেছি: "${message}"।`
       : isHindi
-      ? `मैंने आपकी बात नोट कर ली है और इसे स्वचालित रूप से आपकी सूची में सहेज दिया है: "${message}"।`
-      : `I have processed your request and automatically logged it into your systematic workspace: "${message}".`;
+      ? `मैंने आपका कार्य स्वचालित रूप से आपकी सूची में सहेज दिया है: "${message}"।`
+      : `I have automatically added this task to your systematic schedule: "${message}".`;
+  } else {
+    // Natural conversational answer for greetings, questions, or general chat!
+    replyText = generateIntelligentConversationalAnswer(message);
   }
 
   return {
@@ -752,10 +946,13 @@ const manageTaskTool: FunctionDeclaration = {
 export const apiApp = express();
 apiApp.use(express.json({ limit: "25mb" }));
 
-// Auto-initialize WhatsApp link session if previous credentials exist (on persistent servers)
-if (!process.env.VERCEL && fs.existsSync(WA_AUTH_DIR)) {
+// Auto-initialize WhatsApp link session if previous credentials exist
+if (fs.existsSync(path.join(WA_AUTH_DIR, "creds.json"))) {
   startRealWhatsAppConnection(false).catch(() => {});
 }
+
+let customMetaAccessToken = process.env.WHATSAPP_ACCESS_TOKEN || "";
+let customMetaPhoneId = process.env.WHATSAPP_PHONE_NUMBER_ID || "";
 
 // ==========================================================================
 // DIRECT WHATSAPP DEVICE LINKING & META CLOUD WEBHOOK ENDPOINTS
@@ -810,8 +1007,19 @@ apiApp.post("/api/whatsapp/webhook", async (req, res) => {
   }
 });
 
-apiApp.get("/api/whatsapp/status", (req, res) => {
-  res.json(waRuntime);
+apiApp.get("/api/whatsapp/status", async (req, res) => {
+  // If credentials exist in WA_AUTH_DIR but socket was paused on serverless spin-down, auto-resume it!
+  if (
+    waRuntime.state === "disconnected" &&
+    !isStartingWa &&
+    fs.existsSync(path.join(WA_AUTH_DIR, "creds.json"))
+  ) {
+    startRealWhatsAppConnection(false).catch(() => {});
+  }
+  res.json({
+    ...waRuntime,
+    cloudWebhookConfigured: Boolean(customMetaAccessToken && customMetaPhoneId),
+  });
 });
 
 apiApp.post("/api/whatsapp/connect", async (req, res) => {
@@ -871,14 +1079,28 @@ apiApp.post("/api/whatsapp/pair-code", async (req, res) => {
 });
 
 apiApp.post("/api/whatsapp/settings", (req, res) => {
-  const { autoReplyEnabled, replyToSelfMessages } = req.body || {};
+  const {
+    autoReplyEnabled,
+    replyToSelfMessages,
+    metaAccessToken,
+    metaPhoneNumberId,
+  } = req.body || {};
   if (typeof autoReplyEnabled === "boolean") {
     waRuntime.autoReplyEnabled = autoReplyEnabled;
   }
   if (typeof replyToSelfMessages === "boolean") {
     waRuntime.replyToSelfMessages = replyToSelfMessages;
   }
-  res.json(waRuntime);
+  if (typeof metaAccessToken === "string" && metaAccessToken.trim()) {
+    customMetaAccessToken = metaAccessToken.trim();
+  }
+  if (typeof metaPhoneNumberId === "string" && metaPhoneNumberId.trim()) {
+    customMetaPhoneId = metaPhoneNumberId.trim();
+  }
+  res.json({
+    ...waRuntime,
+    cloudWebhookConfigured: Boolean(customMetaAccessToken && customMetaPhoneId),
+  });
 });
 
 apiApp.post("/api/whatsapp/disconnect", async (req, res) => {
@@ -982,7 +1204,13 @@ CRITICAL MULTILINGUAL LANGUAGE MIRRORING RULE (English, Bengali, Hindi):
     });
 
     const response = await generateWithFallback({
-      models: ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],
+      models: [
+        "gemini-3.8-flash",
+        "gemini-3.1-flash-lite",
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-flash-latest",
+      ],
       contents,
       config: {
         systemInstruction,
